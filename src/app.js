@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const corsOptions = require('./shared/configs/cors.config');
@@ -10,7 +12,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 // Health & base routes
-app.use('/', indexRoutes);
+app.use(indexRoutes);
 app.use('/api/users', userRoutes);
 
 // 404

@@ -1,8 +1,11 @@
-// src/routes/index.routes.js
 const express = require('express');
 const mongoose = require('mongoose');
 
+const paymentRouter = require('./payment.routes');
+
 const router = express.Router();
+
+router.use('/api/payments', paymentRouter);
 
 router.get('/', (_req, res) => {
   res.json({ message: 'Welcome to front-logic API' });
