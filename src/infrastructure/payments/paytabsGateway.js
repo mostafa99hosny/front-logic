@@ -1,10 +1,15 @@
 const paytabs = require('paytabs_pt2');
+const AppError = require('../../shared/utils/appError');
 
 class PayTabsGateway {
   constructor({ profileID, serverKey, region }) {
-    paytabs.setConfig(profileID, serverKey, region);
+    if (!profileID || !serverKey) {
+      throw new AppError('PayTabs profileID and serverKey are required', 400);
+    }
+    paytabs.setConfig(profileID, serverKey, region || 'india');
   }
 
+  // Create payment page
   createPaymentPage({
     paymentMethods,
     transactionDetails,
@@ -17,53 +22,55 @@ class PayTabsGateway {
   }) {
     return new Promise((resolve, reject) => {
       paytabs.createPaymentPage(
-        paymentMethods,       // Array of methods
-        transactionDetails,   // Object
-        cartDetails,          // Object
-        customerDetails,      // Object
-        shippingDetails,      // Object
-        responseUrls,         // Object
-        language,             // String
-        (result) => {         // Callback
-          console.log('PayTabs raw response:', result);
-          const responseCode = result.response_code || result['response_code:'];
+        paymentMethods,
+        transactionDetails,
+        cartDetails,
+        customerDetails,
+        shippingDetails,
+        responseUrls,
+        language,
+        (result) => {
+          console.log('PayTabs createPaymentPage response:', result);
 
-          if (responseCode && responseCode >= 400) {
-            const reason = result.result || result.message || 'Unknown error';
-            console.error('Failed to create payment page:', reason);
-            return reject(new Error(reason));
+          if (!result || result.response_code >= 400) {
+            const reason = result.result || result.message || 'Payment page creation failed';
+            return reject(new AppError(reason, 500));
           }
 
           resolve(result);
         },
-        framed                 // Boolean
+        framed
       );
     });
   }
 
+  // Create one-time payment
   createPayment(paymentDetails) {
     return new Promise((resolve, reject) => {
       paytabs.createPayment(paymentDetails, (result) => {
-        console.log('PayTabs raw response:', result);
-        if (result.response_code && result.response_code >= 400) {
+        console.log('PayTabs createPayment response:', result);
+
+        if (!result || result.response_code >= 400) {
           const reason = result.result || result.message || 'Payment creation failed';
-          console.error('Failed to create payment:', reason);
-          return reject(new Error(reason));
+          return reject(new AppError(reason, 500));
         }
+
         resolve(result);
       });
     });
   }
 
+  // Validate payment
   validatePayment(tranRef) {
     return new Promise((resolve, reject) => {
       paytabs.validatePayment(tranRef, (result) => {
-        console.log('PayTabs raw response:', result);
-        if (result.response_code && result.response_code >= 400) {
+        console.log('PayTabs validatePayment response:', result);
+
+        if (!result || result.response_code >= 400) {
           const reason = result.result || result.message || 'Payment validation failed';
-          console.error('Failed to validate payment:', reason);
-          return reject(new Error(reason));
+          return reject(new AppError(reason, 500));
         }
+
         resolve(result);
       });
     });

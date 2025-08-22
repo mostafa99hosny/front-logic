@@ -7,78 +7,84 @@ class StartSubscriptionUseCase {
   }
 
   async execute({ userId, plan }) {
-    if (!plan || !plan.id || !plan.amount || !plan.currency) {
+    if (!plan || !plan.id || !plan.amount || !plan.currency || !plan.description) {
       throw new appError('Invalid plan details', 400);
     }
 
-    const paymentMethods = ['creditcard'];
+    const paymentMethods = ['all'];
 
-    const transactionDetails = {
-      profile_id: process.env.PAYTABS_PROFILE_ID,
-      tran_type: 'sale',
-      tran_class: 'recurring',
-      cart_id: `sub_${Date.now()}`,
-      cart_currency: plan.currency,
-      cart_amount: plan.amount,
-      cart_description: `Subscription for ${plan.name}`,
-      tokenise: 2
-    };
-
-    const cartDetails = {
-      id: plan.id,
-      description: plan.name,
-      amount: plan.amount,
-      currency: plan.currency
-    };
-
-    const customerDetails = {
-      name: 'John Doe',
-      email: 'john@example.com',
-      phone: '+966123456789'
-    };
-
-    const shippingDetails = {
-      name: 'John Doe',
-      email: 'john@example.com',
-      phone: '+966123456789',
-      address: 'Some Street',
-      city: 'Some City',
-      state: 'Some State',
-      country: 'SA'
-    };
-
-    const responseUrls = {
-      return: `${process.env.APP_URL}/payments/success`,
-      callback: `${process.env.API_URL}/webhooks/paytabs`
-    };
-
-    const transaction = [
-      'sale', // tran_class
-      'recurring',      // tran_type
-      {
-        profile_id: process.env.PAYTABS_PROFILE_ID,
-        cart_id: `sub${Date.now()}`,
-        cart_currency: plan.currency,
-        cart_amount: plan.amount,
-        cart_description: `Subscription for ${plan.name}`,
-        tokenise: 2
-      }
+    const transactionDetails = [
+      'sale',
+      'ecom',
     ];
 
+    const cartDetails = [
+      plan.id,
+      plan.currency,
+      plan.amount,
+      plan.description
+    ];
+
+    const customer = {
+      name: "Aasim Q",
+      email: "sedu321a@gmail.com",
+      phone: "+91 60054 46344",
+      street1: "Street address",
+      city: "Random",
+      state: "01",
+      country: "IND",
+      zip: "110001",
+      IP: "49.36.201.12"
+    }
+
+
+    const customerDetails = [
+      customer.name,
+      customer.email,
+      customer.phone,
+      customer.street1,
+      customer.city,
+      customer.state,
+      customer.country,
+      customer.zip,
+      customer.IP
+    ];
+
+    const shippingDetails = customerDetails
+
+    let url = {
+      callback: "https://example.com/",
+      response: "https://example.com/"
+    };
+
+    const responseUrls = [
+      url.callback,
+      url.response
+    ];
 
     const response = await this.paytabsGateway.createPaymentPage({
       paymentMethods,
-      transactionDetails: transaction,
+      transactionDetails,
       cartDetails,
       customerDetails,
       shippingDetails,
       responseUrls,
-      language: 'en',
+      lang: 'en',
       framed: false
     });
 
     if (!response || !response.redirect_url) {
       throw new appError('Failed to create payment page', 500);
+    }
+
+    if (response.paymentToken) {
+      await this.paymentRepo.createPendingSubscription({
+        userId,
+        planId: plan.id,
+        amount: plan.amount,
+        currency: plan.currency,
+        paymentToken: response.paymentToken
+      });
     }
 
     return { paymentUrl: response.redirect_url };

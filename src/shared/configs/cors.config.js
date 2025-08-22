@@ -1,6 +1,8 @@
-module.exports = {
-  origin: '*',           // tighten for production
+const corsOptions = {
+  origin: ['https://your-vercel-app.vercel.app', 'http://localhost:5173'],
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization'],
-  credentials: false,
+  credentials: true,
 };
+
+module.exports = corsOptions;

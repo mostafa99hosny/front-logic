@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: future-backend
+    env: node
+    branch: main
+    buildCommand: |
+      apt-get update && apt-get install -y python3 python3-pip wget unzip xvfb
+      pip3 install nodriver
+      npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        value: https://your-vercel-frontend.vercel.app

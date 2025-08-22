@@ -1,11 +1,10 @@
 const Payment = require('../models/payment.model');
 
 class PaymentRepo {
-  async createPendingSubscription({ userId, planId, cartId, amount, currency }) {
+  async createPendingSubscription({ userId, planId, amount, currency }) {
     const payment = new Payment({
       userId,
       planId,
-      cartId,
       amount,
       currency,
       status: 'pending'
@@ -23,6 +22,10 @@ class PaymentRepo {
 
   async findByToken(token) {
     return await Payment.findOne({ token });
+  }
+
+  async findAll() {
+    return await Payment.find();
   }
 
   async findByUserId(userId) {
