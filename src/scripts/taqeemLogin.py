@@ -83,36 +83,66 @@ async def submitOtp(otp):
         return {"status": "FAILED", "error": "No login session"}
 
     try:
-        # Use the specific ID from the HTML
+        # Step 1: Submit OTP
         otp_input = await wait_for_element(page, "#emailCode", timeout=30)
         if not otp_input:
             return {"status": "FAILED", "error": "OTP input not found"}
-        
         await otp_input.click()
         await otp_input.send_keys(otp)
 
-        # Use the exact selector from the HTML - input with name="login" and type="submit"
         verify_btn = await wait_for_element(page, "input[name='login'][type='submit']", timeout=30)
         if not verify_btn:
-            # Fallback to just name="login" in case the type attribute check fails
             verify_btn = await wait_for_element(page, "input[name='login']", timeout=5)
-        
         if not verify_btn:
             return {"status": "FAILED", "error": "Verify button not found"}
-        
         await verify_btn.click()
 
-        await asyncio.sleep(5)
+        dashboard = await wait_for_element(
+            page,
+            "#dashboard, .dashboard, .welcome, [class*='success']",
+            timeout=60
+        )
+        if not dashboard:
+            return {"status": "LOGIN_FAILED", "error": "OTP verification failed"}
 
-        # Check for successful login
-        dashboard = await wait_for_element(page, "#dashboard, .dashboard, .welcome, [class*='success']", timeout=30)
-        if dashboard:
-            return {"status": "LOGIN_SUCCESS"}
+        # Step 2: Click on sidebar toggle
+        sidebar_link = await wait_for_element(page, "a[title='العقارات']", timeout=30)
+        if not sidebar_link:
+            return {"status": "FAILED", "error": "Sidebar item not found"}
+        await sidebar_link.click()
 
-        return {"status": "LOGIN_FAILED", "error": "OTP verification failed"}
+        # Step 3: Click nested organization link
+        org_link = await wait_for_element(
+            page,
+            "a[href='https://qima.taqeem.sa/organization/show/137']",
+            timeout=30
+        )
+        if not org_link:
+            return {"status": "FAILED", "error": "Organization link not found"}
+        await org_link.click()
+
+        # Step 4: Click on app tab button
+        app_tab_btn = await wait_for_element(page, "#appTab-3", timeout=30)
+        if not app_tab_btn:
+            return {"status": "FAILED", "error": "App tab button not found"}
+        await app_tab_btn.click()
+
+        # Step 5: Click report creation button
+        report_link = await wait_for_element(
+            page,
+            "a[href='https://qima.taqeem.sa/report/create/1/137']",
+            timeout=30
+        )
+        if not report_link:
+            return {"status": "FAILED", "error": "Report creation link not found"}
+        await report_link.click()
+
+        return {"status": "SUCCESS"}
 
     except Exception as e:
         return {"status": "FAILED", "error": str(e)}
+
+
 
 async def closeBrowser():
     global browser, page
@@ -137,7 +167,6 @@ async def worker():
         try:
             line = await _readline(loop)
             if not line:
-                # stdin closed by parent; shut down gracefully
                 await closeBrowser()
                 break
 
@@ -167,7 +196,6 @@ async def worker():
                     print(json.dumps({"status": "FAILED", "error": f"Unknown action: {action}"}), flush=True)
 
             except StopIteration:
-                # Explicitly catch this Python 3.12+ error
                 print(json.dumps({"status": "FAILED", "error": "Unexpected StopIteration in coroutine"}), flush=True)
             except Exception as e:
                 tb = traceback.format_exc()
