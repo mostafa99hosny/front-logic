@@ -137,6 +137,11 @@ async def submitOtp(otp):
             return {"status": "FAILED", "error": "Report creation link not found"}
         await report_link.click()
 
+        translate = await wait_for_element(page, "a[href='https://qima.taqeem.sa/setlocale/en']", timeout=30)
+        if not translate:
+            return {"status": "FAILED", "error": "Translate link not found"}
+        await translate.click()
+
         return {"status": "SUCCESS"}
 
     except Exception as e:
@@ -155,7 +160,6 @@ async def closeBrowser():
             browser = None
             page = None
 
-# -------- Persistent Worker Loop (NDJSON over stdin) --------
 
 async def _readline(loop):
     # Read a line from stdin in a thread to avoid blocking the event loop
@@ -192,6 +196,31 @@ async def worker():
                     await closeBrowser()
                     print(json.dumps({"status": "CLOSED"}), flush=True)
 
+                elif action == "formFill":
+                    file_path = cmd.get("file")
+                    try:
+                        from formFiller import extractData, fill_form, field_map, field_types
+                        import pandas as pd
+
+                        result = await extractData(file_path)
+                        if result["status"] != "SUCCESS":
+                            print(json.dumps(result), flush=True)
+                            continue
+
+                        records = result["data"]
+
+                        # Print extracted records
+                        print(json.dumps({"status": "EXTRACTED_DATA", "data": records}), flush=True)
+
+                        # Proceed with form filling
+                        for record in records:
+                            await fill_form(page, record, field_map, field_types)
+                            print(json.dumps({"status": "SUCCESS", "message": "Form filled"}), flush=True)
+
+                    except Exception as e:
+                        tb = traceback.format_exc()
+                        print(json.dumps({"status": "FAILED", "error": str(e), "traceback": tb}), flush=True)
+
                 else:
                     print(json.dumps({"status": "FAILED", "error": f"Unknown action: {action}"}), flush=True)
 
@@ -206,6 +235,7 @@ async def worker():
             print(json.dumps({"status": "FAILED", "error": str(outer), "traceback": tb}), flush=True)
             await closeBrowser()
             break
+
 
 if __name__ == "__main__":
     asyncio.run(worker())
