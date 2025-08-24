@@ -1,10 +1,15 @@
-// src/routes/users.routes.js
 const express = require('express');
-const router = express.Router();
+const userController = require('../controllers/user.controller');
+const authMiddleware = require('../../shared/middlewares/auth.middleware');
 
-// Temporary placeholder route (no controller yet)
-router.get('/', (req, res) => {
-  res.json({ message: 'User route works' });
-});
+const userRoutes = express.Router();
 
-module.exports = router;
+// Public routes
+userRoutes.post('/auth/register', userController.register);
+userRoutes.post('/auth/login', userController.login);
+
+// Protected routes
+userRoutes.get('/profile', authMiddleware, userController.getProfile);
+userRoutes.get('/verify', authMiddleware, userController.verifyToken);
+
+module.exports = userRoutes;

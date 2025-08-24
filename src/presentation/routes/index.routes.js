@@ -1,10 +1,11 @@
+const userRoutes = require('./users.routes')
 const express = require('express');
 const mongoose = require('mongoose');
 
 const paymentRouter = require('./payment.routes');
 
 const router = express.Router();
-
+router.use('/api/users', userRoutes);
 router.use('/api/payments', paymentRouter);
 
 router.get('/', (_req, res) => {
