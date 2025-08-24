@@ -4,6 +4,8 @@ const appError = require('../../shared/utils/appError');
 
 const StartSubscriptionUseCase = require('../../application/payments/startSubscription.uc');
 const RenewSubscriptionUseCase = require('../../application/payments/renewSubscription.uc');
+const FindAllSubscriptionsUseCase = require('../../application/payments/findAllSubscriptions.uc');
+
 const PaymentRepo = require('../../infrastructure/repos/payment.repo');
 const PaytabsGateway = require('../../infrastructure/payments/paytabsGateway');
 
@@ -17,6 +19,7 @@ const paytabsGateway = new PaytabsGateway({
 
 const startSubscriptionUC = new StartSubscriptionUseCase(paymentRepo, paytabsGateway);
 const renewSubscriptionUC = new RenewSubscriptionUseCase(paymentRepo, paytabsGateway);
+const findAllSubscriptionsUC = new FindAllSubscriptionsUseCase(paymentRepo);
 
 const startSubscription = catchAsync(async (req, res) => {
     const { userId, plan } = req.body;
@@ -74,8 +77,15 @@ const renewSubscription = catchAsync(async (req, res) => {
     responseHandler(res, 200, paymentResult);
 });
 
+const findAllSubscriptions = catchAsync(async (req, res) => {
+    const subscriptions = await findAllSubscriptionsUC.execute();
+
+    responseHandler(res, 200, subscriptions);
+});
+
 module.exports = {
     startSubscription,
     webhook,
-    renewSubscription
+    renewSubscription,
+    findAllSubscriptions
 };
