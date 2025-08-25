@@ -209,10 +209,8 @@ async def worker():
 
                         records = result["data"]
 
-                        # Print extracted records
                         print(json.dumps({"status": "EXTRACTED_DATA", "data": records}), flush=True)
 
-                        # Proceed with form filling
                         for record in records:
                             await fill_form(page, record, field_map, field_types)
                             print(json.dumps({"status": "SUCCESS", "message": "Form filled"}), flush=True)
