@@ -20,98 +20,131 @@ async def wait_for_element(page, selector, timeout=30, check_interval=1):
         await asyncio.sleep(check_interval)
     return None
 
+
+async def get_browser():
+    global browser
+    if browser is None:
+        browser = await uc.start(headless=False, window_size=(1200, 800))
+    return browser
+
+
 async def startLogin(email, password):
     global browser, page
 
-    # Launch browser if not already running
-    if not browser:
-        browser = await uc.start(
-            headless=False,
-            window_size=(1200, 800),
-            user_data_dir=None
-        )
-
+    browser = await get_browser()
     page = await browser.get(
         "https://sso.taqeem.gov.sa/realms/REL_TAQEEM/protocol/openid-connect/auth?client_id=cli-qima-valuers&redirect_uri=https%3A%2F%2Fqima.taqeem.sa%2Fkeycloak%2Flogin%2Fcallback&scope=openid&response_type=code"
     )
 
-    await asyncio.sleep(5)
-
     try:
-        await wait_for_element(page, "input, button, form", timeout=60)
-    except Exception as e:
-        return {"status": "FAILED", "error": f"Page load failed: {e}"}
-
-    try:
-        email_input = await wait_for_element(page, "#email, #username, input[type='email'], input[name='email']", timeout=30)
+        email_input = await wait_for_element(page, "#username, input[type='email']", 30)
         if not email_input:
-            return {"status": "FAILED", "error": "Email input not found"}
-        await email_input.click()
-        await email_input.send_keys(email)
+            await closeBrowser()
+            return {"status": "FAILED", "error": "Email input not found", "recoverable": False}
 
-        password_input = await wait_for_element(page, "#password, input[type='password'], input[name='password']", timeout=30)
+        await email_input.send_keys(email)
+        password_input = await wait_for_element(page, "input[type='password']", 30)
         if not password_input:
-            return {"status": "FAILED", "error": "Password input not found"}
-        await password_input.click()
+            await closeBrowser()
+            return {"status": "FAILED", "error": "Password input not found", "recoverable": False}
+
         await password_input.send_keys(password)
 
-        login_btn = await wait_for_element(page, "#loginBtn, button[type='submit'], .login-button, input[type='submit']", timeout=30)
+        login_btn = await wait_for_element(page, "#kc-login", 30)
         if not login_btn:
-            return {"status": "FAILED", "error": "Login button not found"}
-        await login_btn.click()
+            await closeBrowser()
+            return {"status": "FAILED", "error": "Login button not found", "recoverable": False}
 
+        await login_btn.click()
         await asyncio.sleep(5)
 
-        # Check OTP
-        otp_field = await wait_for_element(page, "#otp, input[type='tel'], input[name='otp'], #emailCode, #verificationCode", timeout=15)
+        otp_field = await wait_for_element(
+            page,
+            "#otp, input[type='tel'], input[name='otp'], #emailCode, #verificationCode",
+            15
+        )
         if otp_field:
-            # IMPORTANT: do NOT close browser; keep it for the OTP step
-            return {"status": "OTP_REQUIRED"}
+            return {"status": "OTP_REQUIRED", "recoverable": True}
 
-        dashboard = await wait_for_element(page, "#dashboard, .dashboard, .welcome, [class*='success']", timeout=10)
+        dashboard = await wait_for_element(page, "#dashboard", 10)
         if dashboard:
-            return {"status": "LOGIN_SUCCESS"}
+            return {"status": "LOGIN_SUCCESS", "recoverable": True}
 
-        return {"status": "FAILED", "error": "Unknown login state"}
+        await closeBrowser()
+        return {"status": "FAILED", "error": "Unknown login state", "recoverable": False}
 
     except Exception as e:
-        return {"status": "FAILED", "error": str(e)}
+        await closeBrowser()
+        return {"status": "FAILED", "error": str(e), "recoverable": False}
+
 
 async def submitOtp(otp):
     global page
-    if page is None:
-        return {"status": "FAILED", "error": "No login session"}
+
+    if not page:
+        return {"status": "FAILED", "error": "No login session", "recoverable": False}
 
     try:
-        # Step 1: Submit OTP
-        otp_input = await wait_for_element(page, "#emailCode", timeout=30)
+        otp_input = await wait_for_element(
+            page,
+            "#otp, input[type='tel'], input[name='otp'], #emailCode, #verificationCode",
+            30
+        )
         if not otp_input:
-            return {"status": "FAILED", "error": "OTP input not found"}
+            await closeBrowser()
+            return {"status": "FAILED", "error": "OTP input not found", "recoverable": False}
+
         await otp_input.click()
         await otp_input.send_keys(otp)
 
-        verify_btn = await wait_for_element(page, "input[name='login'][type='submit']", timeout=30)
+        verify_btn = None
+        for sel in [
+            "input[name='login'][type='submit']",
+            "input[name='login']",
+            "button[type='submit']",
+            "button[name='login']",
+            ".login-button",
+            "input[type='submit']"
+        ]:
+            verify_btn = await wait_for_element(page, sel, timeout=3)
+            if verify_btn:
+                break
+
         if not verify_btn:
-            verify_btn = await wait_for_element(page, "input[name='login']", timeout=5)
-        if not verify_btn:
-            return {"status": "FAILED", "error": "Verify button not found"}
+            await closeBrowser()
+            return {"status": "FAILED", "error": "Verify button not found", "recoverable": False}
+
         await verify_btn.click()
+        await asyncio.sleep(1)
 
-        dashboard = await wait_for_element(
-            page,
-            "#dashboard, .dashboard, .welcome, [class*='success']",
-            timeout=60
-        )
-        if not dashboard:
-            return {"status": "LOGIN_FAILED", "error": "OTP verification failed"}
+        # Wait for dashboard OR fail
+        dashboard = await wait_for_element(page, "#dashboard, .dashboard, .welcome, [class*='success']", 15)
 
-        # Step 2: Click on sidebar toggle
+        nav_result = await post_login_navigation(page)
+        if nav_result["status"] == "SUCCESS":
+            return {"status": "SUCCESS", "recoverable": True}
+        else:
+            if dashboard:
+                return {"status": "SUCCESS", "warning": "Navigation skipped (dashboard found)", "recoverable": True}
+
+            # ❌ Navigation failed → close browser
+            await closeBrowser()
+            return {**nav_result, "recoverable": False}
+
+    except Exception as e:
+        # ❌ Any error → close browser
+        await closeBrowser()
+        return {"status": "FAILED", "error": str(e), "recoverable": False}
+
+
+
+async def post_login_navigation(page):
+    try:
         sidebar_link = await wait_for_element(page, "a[title='العقارات']", timeout=30)
         if not sidebar_link:
             return {"status": "FAILED", "error": "Sidebar item not found"}
         await sidebar_link.click()
 
-        # Step 3: Click nested organization link
         org_link = await wait_for_element(
             page,
             "a[href='https://qima.taqeem.sa/organization/show/137']",
@@ -121,13 +154,11 @@ async def submitOtp(otp):
             return {"status": "FAILED", "error": "Organization link not found"}
         await org_link.click()
 
-        # Step 4: Click on app tab button
         app_tab_btn = await wait_for_element(page, "#appTab-3", timeout=30)
         if not app_tab_btn:
             return {"status": "FAILED", "error": "App tab button not found"}
         await app_tab_btn.click()
 
-        # Step 5: Click report creation button
         report_link = await wait_for_element(
             page,
             "a[href='https://qima.taqeem.sa/report/create/1/137']",
@@ -137,7 +168,11 @@ async def submitOtp(otp):
             return {"status": "FAILED", "error": "Report creation link not found"}
         await report_link.click()
 
-        translate = await wait_for_element(page, "a[href='https://qima.taqeem.sa/setlocale/en']", timeout=30)
+        translate = await wait_for_element(
+            page,
+            "a[href='https://qima.taqeem.sa/setlocale/en']",
+            timeout=30
+        )
         if not translate:
             return {"status": "FAILED", "error": "Translate link not found"}
         await translate.click()
@@ -148,7 +183,6 @@ async def submitOtp(otp):
         return {"status": "FAILED", "error": str(e)}
 
 
-
 async def closeBrowser():
     global browser, page
     if browser:
@@ -156,14 +190,13 @@ async def closeBrowser():
             await browser.stop()
         except Exception:
             pass
-        finally:
-            browser = None
-            page = None
+    browser = None
+    page = None
 
 
 async def _readline(loop):
-    # Read a line from stdin in a thread to avoid blocking the event loop
     return await loop.run_in_executor(None, sys.stdin.readline)
+
 
 async def worker():
     loop = asyncio.get_running_loop()
@@ -180,7 +213,12 @@ async def worker():
 
             try:
                 cmd = json.loads(line)
-                action = cmd.get("action")
+            except json.JSONDecodeError:
+                print(json.dumps({"status": "FAILED", "error": "Invalid JSON"}), flush=True)
+                continue
+
+            action = cmd.get("action")
+            try:
                 if action == "login":
                     email = cmd.get("email") or ""
                     password = cmd.get("password") or ""
@@ -198,41 +236,56 @@ async def worker():
 
                 elif action == "formFill":
                     file_path = cmd.get("file")
-                    try:
-                        from formFiller import extractData, fill_form, field_map, field_types
-                        import pandas as pd
+                    pdf_paths = cmd.get("pdfs")
 
-                        result = await extractData(file_path)
+                    try:
+                        from formFiller import extractData, fill_form
+                        from formSteps import form_steps
+
+                        result = await extractData(file_path, pdf_paths)
                         if result["status"] != "SUCCESS":
                             print(json.dumps(result), flush=True)
                             continue
 
                         records = result["data"]
-
                         print(json.dumps({"status": "EXTRACTED_DATA", "data": records}), flush=True)
 
                         for record in records:
-                            await fill_form(page, record, field_map, field_types)
-                            print(json.dumps({"status": "SUCCESS", "message": "Form filled"}), flush=True)
+                            for step_num, step_config in enumerate(form_steps, 1):
+                                print(f"Processing step {step_num}...", flush=True)
+
+                                has_next = await fill_form(
+                                    page,
+                                    record,
+                                    step_config["field_map"],
+                                    step_config["field_types"]
+                                )
+
+                                if not has_next:
+                                    print(f"Form completed at step {step_num}", flush=True)
+                                    break
+
+                        print(json.dumps({"status": "SUCCESS", "message": "Form filled completely"}), flush=True)
+                        await closeBrowser()
 
                     except Exception as e:
                         tb = traceback.format_exc()
                         print(json.dumps({"status": "FAILED", "error": str(e), "traceback": tb}), flush=True)
+                        await closeBrowser()
 
                 else:
                     print(json.dumps({"status": "FAILED", "error": f"Unknown action: {action}"}), flush=True)
 
-            except StopIteration:
-                print(json.dumps({"status": "FAILED", "error": "Unexpected StopIteration in coroutine"}), flush=True)
             except Exception as e:
                 tb = traceback.format_exc()
                 print(json.dumps({"status": "FAILED", "error": str(e), "traceback": tb}), flush=True)
+                await closeBrowser()
 
         except Exception as outer:
             tb = traceback.format_exc()
-            print(json.dumps({"status": "FAILED", "error": str(outer), "traceback": tb}), flush=True)
+            print(json.dumps({"status": "FATAL", "error": str(outer), "traceback": tb}), flush=True)
             await closeBrowser()
-            break
+            continue
 
 
 if __name__ == "__main__":
