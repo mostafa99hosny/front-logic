@@ -10,7 +10,10 @@ const runPythonScript = (req, res, next) => {
   const excelPath = req.files.excel[0].path;
   const pdfPaths = req.files.pdfs.map(file => file.path);
   const scriptPath = path.join(__dirname, '../../scripts/dummy.py');
-  const venvPython = process.env.PYTHON_PATH  || path.join(__dirname, '../../../.venv/bin/python');
+  const venvPython = process.env.PYTHON_PATH
+    || (process.env.VENV_ROOT
+      ? path.join(process.env.VENV_ROOT, 'bin', 'python')
+      : path.join(__dirname, '../../../.venv/bin/python'));
 
   console.log("pdfPaths", pdfPaths);
 
@@ -124,7 +127,7 @@ const runLoginScript = async (req, res, next) => {
   if (req.files?.pdfs?.length) {
     pdfFilePaths = req.files.pdfs.map(file => file.path);
   }
-  
+
   try {
     let payload;
 
