@@ -252,7 +252,6 @@ async def worker():
 
                         for record in records:
                             for step_num, step_config in enumerate(form_steps, 1):
-
                                 is_last_step = (step_num == len(form_steps))
                                 print(f"Processing step {step_num}...", flush=True)
 
@@ -265,17 +264,17 @@ async def worker():
                                 )
 
                                 if is_last_step:
-                                    print(f"Form completed at step {step_num}", flush=True)
+                                    # ✅ Send final success response
+                                    print(json.dumps({
+                                        "status": "FORM_FILL_SUCCESS",
+                                        "message": "Form submitted successfully",
+                                        "recoverable": True
+                                    }), flush=True)
                                     break
-
-                        print(json.dumps({"status": "SUCCESS", "message": "Form filled completely"}), flush=True)
 
                     except Exception as e:
                         tb = traceback.format_exc()
                         print(json.dumps({"status": "FAILED", "error": str(e), "traceback": tb}), flush=True)
-                    
-                    # finally:
-                    #     await closeBrowser()  # ✅ Move closeBrowser to finally block
 
                 else:
                     print(json.dumps({"status": "FAILED", "error": f"Unknown action: {action}"}), flush=True)

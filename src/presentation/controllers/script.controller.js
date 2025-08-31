@@ -44,28 +44,42 @@ function ensurePyWorker() {
 
   pyWorker.on('spawn', () => console.log('[PY] Worker spawned'));
 
-  pyWorker.stdout.on('data', (data) => {
-    stdoutBuffer += data.toString();
+pyWorker.stdout.on('data', (data) => {
+  stdoutBuffer += data.toString();
 
-    let lines = stdoutBuffer.split(/\r?\n/);
-    stdoutBuffer = lines.pop() || '';
+  let lines = stdoutBuffer.split(/\r?\n/);
+  stdoutBuffer = lines.pop() || '';
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      let parsed;
-      try {
-        parsed = JSON.parse(line);
-      } catch (e) {
-        console.error('[PY] Invalid JSON line:', line);
-        const req = pending.shift();
-        if (req) req.reject(new AppError('Invalid JSON from Python', 500));
-        continue;
-      }
-      const req = pending.shift();
-      if (req) req.resolve(parsed);
-      else console.warn('[PY] Received response with no pending request:', parsed);
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch (e) {
+      console.error('[PY] Invalid JSON line:', line);
+      // Don't reject here - might be intermediate non-JSON output
+      continue;
     }
-  });
+
+    // Find all pending requests that should receive this response
+    const handlers = pending.filter(req => 
+      req.handler && typeof req.handler === 'function'
+    );
+    
+    if (handlers.length > 0) {
+      handlers.forEach(req => {
+        try {
+          req.handler(parsed);
+        } catch (handlerErr) {
+          console.error('[PY] Handler error:', handlerErr);
+        }
+      });
+    } else {
+      console.warn('[PY] Received response with no pending handler:', parsed);
+    }
+  }
+});
 
   pyWorker.stderr.on('data', (data) => {
     console.error(`[PY STDERR] ${data.toString()}`);
@@ -87,11 +101,43 @@ function ensurePyWorker() {
 function sendCommand(cmdObj) {
   const py = ensurePyWorker();
   return new Promise((resolve, reject) => {
-    pending.push({ resolve, reject });
+    const responses = [];
+    let isComplete = false;
+
+    const responseHandler = (data) => {
+      responses.push(data);
+      
+      // Check if this is a final response that should complete the promise
+      const finalStatuses = ['FORM_FILL_SUCCESS', 'FAILED', 'FATAL', 'CLOSED', 'SUCCESS', 'OTP_REQUIRED', 'LOGIN_SUCCESS'];
+      if (finalStatuses.includes(data.status) && !isComplete) {
+        isComplete = true;
+        
+        // Remove this handler from pending
+        const index = pending.findIndex(req => req.handler === responseHandler);
+        if (index !== -1) {
+          pending.splice(index, 1);
+        }
+        
+        resolve(responses);
+      }
+    };
+
+    const errorHandler = (err) => {
+      if (!isComplete) {
+        isComplete = true;
+        reject(err);
+      }
+    };
+
+    pending.push({ handler: responseHandler, reject: errorHandler });
+    
     try {
       py.stdin.write(JSON.stringify(cmdObj) + '\n');
     } catch (e) {
-      pending.pop();
+      const index = pending.findIndex(req => req.handler === responseHandler);
+      if (index !== -1) {
+        pending.splice(index, 1);
+      }
       reject(new AppError('Failed to send command to Python worker', 500));
     }
   });
@@ -122,7 +168,7 @@ const runLoginScript = async (req, res, next) => {
     formFilePath = req.files.excel[0].path;
   }
   if (req.files?.pdfs?.length) {
-    pdfFilePaths = req.files.pdfs.map(file => file.path); 
+    pdfFilePaths = req.files.pdfs.map(file => file.path);
   }
 
   try {
@@ -136,14 +182,22 @@ const runLoginScript = async (req, res, next) => {
       payload = { action: "login", email, password };
     }
 
-    const result = await sendCommand(payload);
-    res.json(result);
+    const responses = await sendCommand(payload);
+    
+    // For formFill, we might get multiple responses - send the last one to frontend
+    if (formFilePath && responses.length > 0) {
+      const finalResponse = responses[responses.length - 1];
+      res.json(finalResponse);
+    } else {
+      // For login/otp, send the single response
+      res.json(responses[0] || { status: "UNKNOWN_RESPONSE" });
+    }
+    
   } catch (err) {
     console.error("[runLoginScript] error:", err);
     next(err instanceof AppError ? err : new AppError(String(err), 500));
   }
 };
-
 module.exports = {
   runPythonScript,
   runLoginScript,
