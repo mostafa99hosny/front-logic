@@ -11,10 +11,6 @@ const runPythonScript = (req, res, next) => {
   const pdfPaths = req.files.pdfs.map(file => file.path);
   const scriptPath = path.join(__dirname, '../../scripts/dummy.py');
   const venvPython = process.env.PYTHON_PATH
-    || (process.env.VENV_ROOT
-      ? path.join(process.env.VENV_ROOT, 'bin', 'python')
-      : path.join(__dirname, '../../../.venv/bin/python'));
-
   console.log("pdfPaths", pdfPaths);
 
   const args = [scriptPath, excelPath];
@@ -121,11 +117,13 @@ const runLoginScript = async (req, res, next) => {
   const { email, password, otp } = req.body;
   let formFilePath;
   let pdfFilePaths;
+  
+  // Remove the path.join(process.cwd(), ...) part - use the paths directly
   if (req.files?.excel?.[0]?.path) {
-    formFilePath = path.join(process.cwd(), req.files.excel[0].path);
+    formFilePath = req.files.excel[0].path; // ← Use the absolute path directly
   }
   if (req.files?.pdfs?.length) {
-    pdfFilePaths = req.files.pdfs.map(file => file.path);
+    pdfFilePaths = req.files.pdfs.map(file => file.path); // ← These are already absolute
   }
 
   try {
