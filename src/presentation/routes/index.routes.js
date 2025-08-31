@@ -4,11 +4,13 @@ const mongoose = require('mongoose');
 
 const paymentRouter = require('./payment.routes');
 const scriptRouter = require('./script.routes');
+const reportsRouter = require('./reports.routes'); // Add this line
 
 const router = express.Router();
 router.use('/api/users', userRoutes);
 router.use('/api/payments', paymentRouter);
 router.use('/api/scripts', scriptRouter);
+router.use('/api/reports', reportsRouter); // Add this line
 
 router.get('/', (_req, res) => {
   res.json({ message: 'Welcome to front-logic API' });
@@ -20,4 +22,4 @@ router.get('/health', (_req, res) => {
   res.json({ status: 'ok', dbState: state });
 });
 
-module.exports = router;   
+module.exports = router;
