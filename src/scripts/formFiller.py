@@ -4,109 +4,22 @@ import json
 import os
 import time
 
-async def handle_checkbox_group_comprehensive(page, selector, target_value, field_name):
-    """Comprehensive checkbox handler for your specific HTML structure"""
-    try:
-        # Find all checkbox containers
-        checkbox_containers = await page.query_selector_all("div.form-check")
-        
-        for container in checkbox_containers:
-            # Get the label within this container
-            label = await container.query_selector("label.form-check-label")
-            if not label:
-                continue
-                
-            label_text = await label.text_content()
-            label_text = label_text.strip() if label_text else ""
-            
-            # Check if this label matches our target value
-            if label_text and target_value.lower() in label_text.lower():
-                # Get the checkbox within this container
-                checkbox = await container.query_selector("input[type='checkbox']")
-                if checkbox:
-                    # Determine if we should check or uncheck
-                    should_check = target_value.lower() not in ['no', 'false', '0', 'off', 'unchecked']
-                    
-                    is_checked = await checkbox.is_checked()
-                    if should_check != is_checked:
-                        await checkbox.click()
-                        print(f"{'Checked' if should_check else 'Unchecked'} '{label_text}'")
-                    return True
-        
-        print(f"Checkbox '{target_value}' not found in group {field_name}")
-        return False
-        
-    except Exception as e:
-        print(f"Error in comprehensive checkbox handling: {e}")
-        return False
-
-async def find_associated_label(page, element):
-    """Find label associated with an input element using various methods"""
-    try:
-        # Method 1: Label with for attribute
-        element_id = await element.get_attribute("id")
-        if element_id:
-            label = await page.query_selector(f"label[for='{element_id}']")
-            if label:
-                return label
-        
-        # Method 2: Label that wraps the input (parent label)
-        parent_label = await element.query_selector("xpath=./ancestor::label")
-        if parent_label:
-            return parent_label
-        
-        # Method 3: Label that is next sibling or previous sibling
-        # Look for immediate sibling label
-        next_sibling = await element.query_selector("xpath=./following-sibling::label[1]")
-        if next_sibling:
-            return next_sibling
-        
-        prev_sibling = await element.query_selector("xpath=./preceding-sibling::label[1]")
-        if prev_sibling:
-            return prev_sibling
-        
-        # Method 4: Look for label in the same container/row
-        # This is more complex and might need customization based on your HTML structure
-        container = await element.query_selector("xpath=./ancestor::div[contains(@class, 'form-group') or contains(@class, 'checkbox') or contains(@class, 'radio')]")
-        if container:
-            label = await container.query_selector("label")
-            if label:
-                return label
-        
-        # Method 5: Look for text near the input that might be a label
-        # This is a fallback approach
-        parent = await element.query_selector("xpath=./..")
-        if parent:
-            parent_text = await parent.text_content()
-            if parent_text and len(parent_text.strip()) > 0:
-                # If parent has text, it might be acting as a label
-                return parent
-        
-        return None
-        
-    except Exception as e:
-        print(f"Error finding associated label: {e}")
-        return None
-
 async def select_select2_option_simple(page, selector, value):
     try:
         print(f"Selecting Select2 option: {value}")
-        
         element = await page.find(selector)
-        print("this the boy", element)
         
         if not element:
             print(f"No Select2 element found for {selector}")
             return False
 
-        # Force open dropdown
         await element.apply("""
         (el) => {
             const evt = new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window });
             el.dispatchEvent(evt);
         }
         """)
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1)
 
 
         search_input = await wait_for_element(page, "input.select2-search__field", timeout=5)
@@ -130,7 +43,8 @@ async def select_select2_option_simple(page, selector, value):
         el.dispatchEvent(evt);
 }
         """)
-        await asyncio.sleep(0.5)
+
+        await asyncio.sleep(1)
         
         print(f"Successfully selected: {value}")
         return True

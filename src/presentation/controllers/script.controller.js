@@ -118,12 +118,11 @@ const runLoginScript = async (req, res, next) => {
   let formFilePath;
   let pdfFilePaths;
   
-  // Remove the path.join(process.cwd(), ...) part - use the paths directly
   if (req.files?.excel?.[0]?.path) {
-    formFilePath = req.files.excel[0].path; // ← Use the absolute path directly
+    formFilePath = req.files.excel[0].path;
   }
   if (req.files?.pdfs?.length) {
-    pdfFilePaths = req.files.pdfs.map(file => file.path); // ← These are already absolute
+    pdfFilePaths = req.files.pdfs.map(file => file.path); 
   }
 
   try {
