@@ -1,5 +1,6 @@
 # Node modules
 node_modules/
+.venv/
 
 # Logs
 npm-debug.log*
@@ -7,6 +8,13 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 *.log
+
+# Ignore everything inside uploads
+uploads/*
+
+# But don’t ignore the placeholder file
+!uploads/.gitkeep
+
 
 # Runtime data
 pids
