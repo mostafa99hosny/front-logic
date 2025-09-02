@@ -1,7 +1,8 @@
 const express = require('express');
 const upload = require('../../shared/middlewares/upload');
 
-const { runLoginScript } = require('../controllers/script.controller');
+const { runTaqeemScript } = require('../controllers/script.controller');
+const { runMeqyasScript } = require('../controllers/meqyas.controller');
 
 const scriptRouter = express.Router();
 
@@ -10,7 +11,9 @@ scriptRouter.post(
     { name: 'excel', maxCount: 1 }, 
     { name: 'pdfs', maxCount: 10 }  
   ]),
-  runLoginScript
+  runTaqeemScript
 );
+
+scriptRouter.post('/meqyas', runMeqyasScript);
 
 module.exports = scriptRouter;

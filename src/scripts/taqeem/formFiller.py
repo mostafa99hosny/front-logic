@@ -3,6 +3,11 @@ import asyncio
 import json
 import os
 import time
+import traceback
+
+from formSteps import form_steps
+from browser import get_page          
+
 
 async def select_select2_option_simple(page, selector, value):
     try:
@@ -28,6 +33,9 @@ async def select_select2_option_simple(page, selector, value):
             return False
 
         await search_input.focus()
+        await search_input.clear_input()
+        await asyncio.sleep(0.1)
+
         await search_input.send_keys(value)
         await search_input.apply("""
         (el) => {
@@ -67,19 +75,17 @@ async def wait_for_element(page, selector, timeout=30, check_interval=1):
 
 async def extractData(file_path, pdf_paths):
     try:
-        # Read Excel file
         df = pd.read_excel(file_path)
         df = df.fillna("")
 
         records = df.to_dict(orient="records")
 
-        # Build lookup by file name -> absolute path
         pdf_lookup = {os.path.basename(pdf_path): os.path.abspath(pdf_path) for pdf_path in pdf_paths}
 
         for record in records:
             pdf_name = str(record.get("Report Asset File", "")).strip()
+
             if pdf_name and pdf_name in pdf_lookup:
-                # ✅ Directly use the absolute path from multer
                 record["Report Asset File"] = os.path.normpath(pdf_lookup[pdf_name])
             else:
                 record["Report Asset File"] = ""
@@ -87,10 +93,10 @@ async def extractData(file_path, pdf_paths):
         json_str = json.dumps(records, default=str, ensure_ascii=False)
         json_data = json.loads(json_str)
 
-        # ✅ Cleanup after processing
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
+
         except Exception as del_err:
             return {
                 "status": "SUCCESS",
@@ -118,6 +124,9 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False):
                     if "readonly" in element.attrs:
                         print("element readonly", element)
                         await element.apply("(el) => el.removeAttribute('readonly')")
+
+                    await element.clear_input()
+                    await asyncio.sleep(0.1)
                     await element.send_keys(value)
 
             elif field_type == "location":
@@ -158,8 +167,7 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False):
                     elements = await page.query_selector_all(selector)
                     if elements:
                         for element in elements:
-                            parent = await element.parent
-                            sibling = await parent.query_selector("div")
+                            sibling = await element.apply("(el) => el.nextElementSibling")
                             if sibling:
                                 labelText = sibling.text
                                 if labelText and value.lower() in labelText.lower():
@@ -203,7 +211,6 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False):
                             if label:
                                 label_text = label.text
                                 if label_text and value.lower() in label_text.lower():
-                                    # Click either the label or the checkbox
                                     await check.click()
                                     option_found = True
                                     print(f"Selected checkbox by label text: {value}")
@@ -241,3 +248,42 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False):
     except Exception as e:
         print(f"Error clicking continue button: {e}")
         return False
+    
+
+async def runFormFill(page, file_path, pdf_paths):
+    try:
+        # 1. Extract records
+        result = await extractData(file_path, pdf_paths)
+        if result["status"] != "SUCCESS":
+            return result
+
+        records = result["data"]
+
+        print(json.dumps({"status": "EXTRACTED_DATA", "data": records}), flush=True)
+
+        for record in records:
+            for step_num, step_config in enumerate(form_steps, 1):
+                is_last_step = (step_num == len(form_steps))
+                print(f"Processing step {step_num}...", flush=True)
+
+                await fill_form(
+                    page,
+                    record,
+                    step_config["field_map"],
+                    step_config["field_types"],
+                    is_last_step
+                )
+
+                if is_last_step:
+                    print(json.dumps({
+                        "status": "FORM_FILL_SUCCESS",
+                        "message": "Form submitted successfully",
+                        "recoverable": True
+                    }), flush=True)
+                    break
+
+        return {"status": "SUCCESS"}
+
+    except Exception as e:
+        tb = traceback.format_exc()
+        return {"status": "FAILED", "error": str(e), "traceback": tb}

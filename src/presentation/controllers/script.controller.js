@@ -2,32 +2,6 @@ const { spawn } = require('child_process');
 const path = require('path');
 const AppError = require('../../shared/utils/appError');
 
-const runPythonScript = (req, res, next) => {
-  if (!req.files?.excel?.[0] || !req.files?.pdfs?.length) {
-    return next(new AppError('Upload both Excel and at least one PDF file.', 400));
-  }
-
-  const excelPath = req.files.excel[0].path;
-  const pdfPaths = req.files.pdfs.map(file => file.path);
-  const scriptPath = path.join(__dirname, '../../scripts/dummy.py');
-  const venvPython = process.env.PYTHON_PATH
-  console.log("pdfPaths", pdfPaths);
-
-  const args = [scriptPath, excelPath];
-  const py = spawn(venvPython, args);
-
-  let output = '';
-  py.stdout.on('data', data => (output += data.toString()));
-  py.stderr.on('data', data => console.error(`Python error: ${data}`));
-
-  py.on('close', code => {
-    if (code !== 0) {
-      return next(new AppError(`Python script exited with code ${code}`, 500));
-    }
-    res.json({ success: true, output });
-  });
-};
-
 let pyWorker = null;
 let stdoutBuffer = '';
 const pending = [];
@@ -35,51 +9,49 @@ const pending = [];
 function ensurePyWorker() {
   if (pyWorker && !pyWorker.killed) return pyWorker;
 
-  const scriptPath = path.join(__dirname, '../../scripts/taqeemLogin.py');
+  const scriptPath = path.join(__dirname, '../../scripts/taqeem/worker_taqeem.py');
   const venvPython = path.join(__dirname, '../../../.venv/bin/python');
 
   pyWorker = spawn(venvPython, [scriptPath], {
-    cwd: path.join(__dirname, '../../scripts'),
+    cwd: path.join(__dirname, '../../scripts/taqeem'),
   });
 
   pyWorker.on('spawn', () => console.log('[PY] Worker spawned'));
 
-pyWorker.stdout.on('data', (data) => {
-  stdoutBuffer += data.toString();
+  pyWorker.stdout.on('data', (data) => {
+    stdoutBuffer += data.toString();
 
-  let lines = stdoutBuffer.split(/\r?\n/);
-  stdoutBuffer = lines.pop() || '';
+    let lines = stdoutBuffer.split(/\r?\n/);
+    stdoutBuffer = lines.pop() || '';
 
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    
-    let parsed;
-    try {
-      parsed = JSON.parse(line);
-    } catch (e) {
-      console.error('[PY] Invalid JSON line:', line);
-      // Don't reject here - might be intermediate non-JSON output
-      continue;
+    for (const line of lines) {
+      if (!line.trim()) continue;
+
+      let parsed;
+      try {
+        parsed = JSON.parse(line);
+      } catch (e) {
+        console.error('[PY] Invalid JSON line:', line);
+        continue;
+      }
+
+      const handlers = pending.filter(req =>
+        req.handler && typeof req.handler === 'function'
+      );
+
+      if (handlers.length > 0) {
+        handlers.forEach(req => {
+          try {
+            req.handler(parsed);
+          } catch (handlerErr) {
+            console.error('[PY] Handler error:', handlerErr);
+          }
+        });
+      } else {
+        console.warn('[PY] Received response with no pending handler:', parsed);
+      }
     }
-
-    // Find all pending requests that should receive this response
-    const handlers = pending.filter(req => 
-      req.handler && typeof req.handler === 'function'
-    );
-    
-    if (handlers.length > 0) {
-      handlers.forEach(req => {
-        try {
-          req.handler(parsed);
-        } catch (handlerErr) {
-          console.error('[PY] Handler error:', handlerErr);
-        }
-      });
-    } else {
-      console.warn('[PY] Received response with no pending handler:', parsed);
-    }
-  }
-});
+  });
 
   pyWorker.stderr.on('data', (data) => {
     console.error(`[PY STDERR] ${data.toString()}`);
@@ -106,18 +78,25 @@ function sendCommand(cmdObj) {
 
     const responseHandler = (data) => {
       responses.push(data);
-      
-      // Check if this is a final response that should complete the promise
-      const finalStatuses = ['FORM_FILL_SUCCESS', 'FAILED', 'FATAL', 'CLOSED', 'SUCCESS', 'OTP_REQUIRED', 'LOGIN_SUCCESS'];
+
+      const finalStatuses = [
+        'FORM_FILL_SUCCESS',
+        'FAILED',
+        'FATAL',
+        'CLOSED',
+        'SUCCESS',
+        'OTP_REQUIRED',
+        'LOGIN_SUCCESS'
+      ];
+
       if (finalStatuses.includes(data.status) && !isComplete) {
         isComplete = true;
-        
-        // Remove this handler from pending
+
         const index = pending.findIndex(req => req.handler === responseHandler);
         if (index !== -1) {
           pending.splice(index, 1);
         }
-        
+
         resolve(responses);
       }
     };
@@ -130,7 +109,7 @@ function sendCommand(cmdObj) {
     };
 
     pending.push({ handler: responseHandler, reject: errorHandler });
-    
+
     try {
       py.stdin.write(JSON.stringify(cmdObj) + '\n');
     } catch (e) {
@@ -159,11 +138,11 @@ async function closeWorker() {
   }
 }
 
-const runLoginScript = async (req, res, next) => {
+const runTaqeemScript = async (req, res, next) => {
   const { email, password, otp } = req.body;
   let formFilePath;
   let pdfFilePaths;
-  
+
   if (req.files?.excel?.[0]?.path) {
     formFilePath = req.files.excel[0].path;
   }
@@ -183,23 +162,20 @@ const runLoginScript = async (req, res, next) => {
     }
 
     const responses = await sendCommand(payload);
-    
-    // For formFill, we might get multiple responses - send the last one to frontend
+
     if (formFilePath && responses.length > 0) {
-      const finalResponse = responses[responses.length - 1];
-      res.json(finalResponse);
+      res.json(responses[responses.length - 1]);
     } else {
-      // For login/otp, send the single response
       res.json(responses[0] || { status: "UNKNOWN_RESPONSE" });
     }
-    
+
   } catch (err) {
-    console.error("[runLoginScript] error:", err);
+    console.error("[runTaqeemScript] error:", err);
     next(err instanceof AppError ? err : new AppError(String(err), 500));
   }
 };
+
 module.exports = {
-  runPythonScript,
-  runLoginScript,
+  runTaqeemScript,
   closeWorker,
 };

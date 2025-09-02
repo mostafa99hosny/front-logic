@@ -117,7 +117,6 @@ async def submitOtp(otp):
         await verify_btn.click()
         await asyncio.sleep(1)
 
-        # Wait for dashboard OR fail
         dashboard = await wait_for_element(page, "#dashboard, .dashboard, .welcome, [class*='success']", 15)
 
         nav_result = await post_login_navigation(page)
@@ -127,12 +126,10 @@ async def submitOtp(otp):
             if dashboard:
                 return {"status": "SUCCESS", "warning": "Navigation skipped (dashboard found)", "recoverable": True}
 
-            # ❌ Navigation failed → close browser
             await closeBrowser()
             return {**nav_result, "recoverable": False}
 
     except Exception as e:
-        # ❌ Any error → close browser
         await closeBrowser()
         return {"status": "FAILED", "error": str(e), "recoverable": False}
 
@@ -239,8 +236,8 @@ async def worker():
                     pdf_paths = cmd.get("pdfs")
 
                     try:
-                        from formFiller import extractData, fill_form
-                        from formSteps import form_steps
+                        from scripts.taqeem.formFiller import extractData, fill_form
+                        from scripts.taqeem.formSteps import form_steps
 
                         result = await extractData(file_path, pdf_paths)
                         if result["status"] != "SUCCESS":
@@ -255,7 +252,7 @@ async def worker():
                                 is_last_step = (step_num == len(form_steps))
                                 print(f"Processing step {step_num}...", flush=True)
 
-                                has_next = await fill_form(
+                                await fill_form(
                                     page,
                                     record,
                                     step_config["field_map"],
@@ -264,7 +261,6 @@ async def worker():
                                 )
 
                                 if is_last_step:
-                                    # ✅ Send final success response
                                     print(json.dumps({
                                         "status": "FORM_FILL_SUCCESS",
                                         "message": "Form submitted successfully",
