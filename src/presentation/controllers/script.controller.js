@@ -9,8 +9,13 @@ const pending = [];
 function ensurePyWorker() {
   if (pyWorker && !pyWorker.killed) return pyWorker;
 
+  const isWin = process.platform === 'win32';
+
+  const venvPython = isWin
+    ? path.join(__dirname, '../../../.venv/Scripts/python.exe')
+    : path.join(__dirname, '../../../.venv/bin/python');
+    
   const scriptPath = path.join(__dirname, '../../scripts/taqeem/worker_taqeem.py');
-  const venvPython = path.join(__dirname, '../../../.venv/bin/python');
 
   pyWorker = spawn(venvPython, [scriptPath], {
     cwd: path.join(__dirname, '../../scripts/taqeem'),
