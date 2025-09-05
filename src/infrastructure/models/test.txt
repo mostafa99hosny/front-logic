@@ -1,0 +1,740 @@
+{
+  "report_information": {
+    "item_id": {
+      "label_en": "Item ID",
+      "label_ar": "رقم العنصر",
+      "field_name": "item_id"
+    },
+    "title": {
+      "label_en": "Report Title",
+      "label_ar": "عنوان التقرير",
+      "required": true,
+      "field_name": "title"
+    },
+    "valuation_purpose": {
+      "label_en": "Valuation Purpose",
+      "label_ar": "الغرض من التقييم",
+      "required": true,
+      "field_name": "purpose_id",
+      "options": [
+        { "value": 1, "label_ar": "البيع", "label_en": "Sale" },
+        { "value": 2, "label_ar": "الشراء", "label_en": "Purchase" },
+        { "value": 4, "label_ar": "الاستثمار", "label_en": "Investment" },
+        { "value": 5, "label_ar": "تقدير القيمة الإيجارية", "label_en": "Rental Valuation" },
+        { "value": 6, "label_ar": "التأمين", "label_en": "Insurance" },
+        { "value": 7, "label_ar": "الرهن العقاري", "label_en": "Mortgage" },
+        { "value": 8, "label_ar": "أغراض محاسبية", "label_en": "Accounting Purposes" },
+        { "value": 9, "label_ar": "التمويل", "label_en": "Financing" },
+        { "value": 10, "label_ar": "النزاعات والتقاضي", "label_en": "Disputes and Litigation" },
+        { "value": 11, "label_ar": "نزع الملكية", "label_en": "Expropriation" },
+        { "value": 12, "label_ar": "الضرائب", "label_en": "Taxes" },
+        { "value": 14, "label_ar": "أخرى", "label_en": "Other" }
+      ]
+    },
+    "value_premise": {
+      "label_en": "Value Premise",
+      "label_ar": "فرضية القيمة",
+      "required": true,
+      "field_name": "value_premise_id",
+      "options": [
+        { "value": 1, "label_ar": "الاستخدام الأعلى والأفضل", "label_en": "Highest and Best Use" },
+        { "value": 2, "label_ar": "الاستخدام الحالي", "label_en": "Current Use" },
+        { "value": 3, "label_ar": "التصفية المنظمة", "label_en": "Orderly Liquidation" },
+        { "value": 4, "label_ar": "البيع القسري", "label_en": "Forced Sale" },
+        { "value": 5, "label_ar": "أخرى", "label_en": "Other" }
+      ]
+    },
+    "value_base": {
+      "label_en": "Value Base",
+      "label_ar": "أساس القيمة",
+      "required": true,
+      "field_name": "value_base_id",
+      "options": [
+        { "value": 1, "label_ar": "القيمة السوقية", "label_en": "Market Value" },
+        { "value": 2, "label_ar": "الإيجار السوقي", "label_en": "Market Rent" },
+        { "value": 3, "label_ar": "القيمة المنصفة", "label_en": "Fair Value" },
+        { "value": 4, "label_ar": "القيمة الاستثمارية", "label_en": "Investment Value" },
+        { "value": 5, "label_ar": "القيمة التكاملية", "label_en": "Synergistic Value" },
+        { "value": 6, "label_ar": "قيمة التصفية", "label_en": "Liquidation Value" },
+        { "value": 7, "label_ar": "القيمة العادلة", "label_en": "Fair Value" },
+        { "value": 8, "label_ar": "القيمة السوقية العادلة", "label_en": "Fair Market Value" },
+        { "value": 9, "label_ar": "أخرى", "label_en": "Other" }
+      ]
+    },
+    "report_type": {
+      "label_en": "Report Type",
+      "label_ar": "نوع التقرير",
+      "required": true,
+      "field_name": "report_type",
+      "options": [
+        { "value": "Complete", "label_ar": "تقرير مفصل", "label_en": "Complete" },
+        { "value": "Summary", "label_ar": "ملخص التقرير", "label_en": "Summary" },
+        { "value": "Review with Opinion", "label_ar": "مراجعة مع قيمة جديدة", "label_en": "Review with Opinion" },
+        { "value": "Review without Opinion", "label_ar": "مراجعة بدون قيمة جديدة", "label_en": "Review without Opinion" }
+      ]
+    },
+    "valuation_date": {
+      "label_en": "Valuation Date",
+      "label_ar": "تاريخ التقييم",
+      "required": true,
+      "field_name": "valued_at"
+    },
+    "report_issuing_date": {
+      "label_en": "Report Issuing Date",
+      "label_ar": "تاريخ إصدار التقرير",
+      "required": true,
+      "field_name": "submitted_at"
+    },
+    "assumptions": {
+      "label_en": "Assumptions",
+      "label_ar": "الافتراضات",
+      "field_name": "assumptions"
+    },
+    "special_assumptions": {
+      "label_en": "Special Assumptions",
+      "label_ar": "الافتراضات الخاصة",
+      "field_name": "special_assumptions"
+    },
+    "final_value": {
+      "label_en": "Final Value",
+      "label_ar": "الرأي النهائي في القيمة",
+      "required": true,
+      "field_name": "value"
+    },
+    "valuation_currency": {
+      "label_en": "Valuation Currency",
+      "label_ar": "عملة التقييم",
+      "required": true,
+      "field_name": "currency_id",
+      "options": [
+        { "value": 1, "label_ar": "ريال سعودي", "label_en": "Saudi Riyal" },
+        { "value": 2, "label_ar": "دولار أمريكي", "label_en": "US Dollar" },
+        { "value": 3, "label_ar": "درهم إماراتي", "label_en": "UAE Dirham" },
+        { "value": 4, "label_ar": "يورو", "label_en": "Euro" },
+        { "value": 5, "label_ar": "جنيه إسترليني", "label_en": "British Pound" },
+        { "value": 6, "label_ar": "جنيه سوداني", "label_en": "Sudanese Pound" }
+      ]
+    },
+    "report_asset_file": {
+      "label_en": "Report Asset File",
+      "label_ar": "ملف أصل التقرير",
+      "required": true,
+      "field_name": "report_file"
+    }
+  },
+  "client_information": {
+    "client_name": {
+      "label_en": "Client Name",
+      "label_ar": "اسم العميل",
+      "required": true,
+      "field_name": "client[0][name]"
+    },
+    "telephone_number": {
+      "label_en": "Telephone Number",
+      "label_ar": "رقم الهاتف",
+      "required": true,
+      "field_name": "client[0][telephone]"
+    },
+    "email_address": {
+      "label_en": "E-mail Address",
+      "label_ar": "البريد الإلكتروني",
+      "required": true,
+      "field_name": "client[0][email]"
+    },
+    "has_other_users": {
+      "label_en": "The report has other users",
+      "label_ar": "للتقرير مستخدمون آخرون",
+      "field_name": "has_user"
+    },
+    "report_user_name": {
+      "label_en": "Report User Name",
+      "label_ar": "اسم مستخدم التقرير",
+      "required": true,
+      "field_name": "user[0][name]"
+    }
+  },
+  "resident_data": {
+    "valuer_name": {
+      "label_en": "Valuer Name",
+      "label_ar": "اسم المقيم",
+      "required": true,
+      "field_name": "valuer[0][id]",
+      "options": [
+        { "value": 697, "label": "1220000100 - نادر صالح الخليفه" },
+        { "value": 700, "label": "1220000233 - عبدالله طاهر نعمان يحيى المزروعي" },
+        { "value": 719, "label": "1210001596 - عبدالله محمد عبدالله الدوسري" },
+        { "value": 832, "label": "1210000449 - عبدالله بن عبدالرحمن بن عبدالله الصعب" },
+        { "value": 2090, "label": "1210001685 - عبدالعزيز خالد بن محمد الخالد" },
+        { "value": 2796, "label": "1210000830 - محمد بن عبدالله بن محمد الزهراني" },
+        { "value": 3545, "label": "1210000758 - رياض نشمي عليان الرشيدي" },
+        { "value": 4873, "label": "1210001807 - محمد بندر عبدالله الرقاص" },
+        { "value": 5673, "label": "1210001359 - أحمد علي بن احمد العباد" },
+        { "value": 6568, "label": "1210001669 - علي عبده بن أحمد بهكلي" },
+        { "value": 10500, "label": "1210003070 - احمد محمدنور بن محمد جنيدى" },
+        { "value": 11456, "label": "1210002016 - عبدالعزيز سهيل عبدالعزيز السهيل" },
+        { "value": 12170, "label": "1210003855 - فارس بدر فهد الجريوي" },
+        { "value": 13374, "label": "1210001992 - يوسف فاران عبيد المطرفي" },
+        { "value": 17775, "label": "1210002671 - عبدالله ابراهيم عبدالله الغامدي" },
+        { "value": 19024, "label": "1210002882 - عبدالله حمد صالح العبيد" }
+      ]
+    },
+    "contribution_percentage": {
+      "label_en": "Contribution Percentage",
+      "label_ar": "نسبة المساهمة",
+      "required": true,
+      "field_name": "valuer[0][contribution]",
+      "options": [
+        { "value": 5, "label": "5%" },
+        { "value": 10, "label": "10%" },
+        { "value": 15, "label": "15%" },
+        { "value": 20, "label": "20%" },
+        { "value": 25, "label": "25%" },
+        { "value": 30, "label": "30%" },
+        { "value": 35, "label": "35%" },
+        { "value": 40, "label": "40%" },
+        { "value": 45, "label": "45%" },
+        { "value": 50, "label": "50%" },
+        { "value": 55, "label": "55%" },
+        { "value": 60, "label": "60%" },
+        { "value": 65, "label": "65%" },
+        { "value": 70, "label": "70%" },
+        { "value": 75, "label": "75%" },
+        { "value": 80, "label": "80%" },
+        { "value": 85, "label": "85%" }
+      ]
+    }
+  },
+  "asset_information": {
+    "asset_type": {
+      "label_en": "Type of Asset Being Valued",
+      "label_ar": "نوع الأصل محل التقييم",
+      "required": true,
+      "field_name": "asset_type_id",
+      "options": [
+        { "value": 1, "label_ar": "أرض فضاء", "label_en": "Vacant Land" },
+        { "value": 2, "label_ar": "مبنى", "label_en": "Building" },
+       
+      ]
+    },
+    "asset_usage": {
+      "label_en": "Asset Being Valued Usage/Sector",
+      "label_ar": "استخدام/قطاع الأصل محل التقييم",
+      "required": true,
+      "field_name": "asset_usage_id",
+      "options": [
+        { "value": 1, "label_ar": "سكني", "label_en": "Residential" },
+        { "value": 2, "label_ar": "سكني مشترك", "label_en": "Mixed Residential" },
+        { "value": 3, "label_ar": "تجاري", "label_en": "Commercial" },
+        { "value": 4, "label_ar": "إداري", "label_en": "Administrative" },
+        { "value": 5, "label_ar": "زراعي", "label_en": "Agricultural" },
+        { "value": 6, "label_ar": "صناعي", "label_en": "Industrial" },
+        { "value": 7, "label_ar": "مستودعات", "label_en": "Warehouses" },
+        { "value": 8, "label_ar": "فنادق", "label_en": "Hotels" },
+        { "value": 9, "label_ar": "رعاية صحية", "label_en": "Healthcare" },
+        { "value": 10, "label_ar": "مباني تعليمية", "label_en": "Educational Buildings" },
+        { "value": 11, "label_ar": "خدمات السيارات والمحطات", "label_en": "Auto Services and Stations" },
+        { "value": 12, "label_ar": "المطاعم", "label_en": "Restaurants" },
+        { "value": 13, "label_ar": "قاعات احتفالات", "label_en": "Event Halls" },
+        { "value": 14, "label_ar": "استخدامات متعددة", "label_en": "Multiple Uses" },
+        { "value": 15, "label_ar": "عامة", "label_en": "Public" },
+        { "value": 16, "label_ar": "أخرى", "label_en": "Other" }
+      ]
+    },
+    "inspection_date": {
+      "label_en": "Inspection Date",
+      "label_ar": "تاريخ معاينة الأصل",
+      "required": true,
+      "field_name": "inspected_at"
+    },
+    "final_value": {
+      "label_en": "Final Value",
+      "label_ar": "الرأي النهائي في القيمة",
+      "required": true,
+      "field_name": "value"
+    }
+  },
+  "valuation_approach_information": {
+    "market_approach": {
+      "label_en": "Market Approach",
+      "label_ar": "أسلوب السوق",
+      "required": true,
+      "field_name": "approach[1][is_primary]",
+      "options": [
+            { "value": "", "label_ar": "غير مستخدم", "label_en": "Not Used" },
+            { "value": 1, "label_ar": "أساسي لتقدير القيمة", "label_en": "Primary for Valuation" },
+            { "value": 2, "label_ar": "مساعد لتقدير القيمة", "label_en": "Supporting for Valuation" }
+          ]
+      "methods": {
+        "comparable_transactions": {
+          "label_en": "Comparable Transactions Method",
+          "label_ar": "طريقة المعاملات المقارنة",
+          "field_name": "approach[1][method][1][value]"
+        },
+        "guideline_publicly_traded": {
+          "label_en": "Guideline Publicly-Traded Comparable Method",
+          "label_ar": "الطريقة الإرشادية للمقارنات المتداولة",
+          "field_name": "approach[1][method][2][value]"
+        },
+        "other": {
+          "label_en": "Other",
+          "label_ar": "أخرى",
+          "field_name": "approach[1][method][3][value]"
+        }
+      }
+    },
+    "income_approach": {
+      "label_en": "Income Approach",
+      "label_ar": "أسلوب الدخل",
+      "required": true,
+      "field_name": "approach[2][is_primary]",
+      "options": [
+            { "value": "", "label_ar": "غير مستخدم", "label_en": "Not Used" },
+            { "value": 1, "label_ar": "أساسي لتقدير القيمة", "label_en": "Primary for Valuation" },
+            { "value": 2, "label_ar": "مساعد لتقدير القيمة", "label_en": "Supporting for Valuation" }
+          ],
+      "methods": {
+        "dcf": {
+          "label_en": "Discounted Cash Flow (DCF) Method",
+          "label_ar": "طريقة التدفقات النقدية المخصومة (DCF)",
+          "field_name": "approach[2][method][4][value]",
+          
+        },
+        "profit_method": {
+          "label_en": "Profit Method",
+          "label_ar": "طريقة الأرباح",
+          "field_name": "approach[2][method][5][value]"
+        },
+        "residual_value": {
+          "label_en": "Residual Value Method",
+          "label_ar": "طريقة القيمة المتبقية",
+          "field_name": "approach[2][method][6][value]"
+        },
+        "investment_method": {
+          "label_en": "Investment Method",
+          "label_ar": "طريقة الاستثمار",
+          "field_name": "approach[2][method][7][value]"
+        },
+        "other": {
+          "label_en": "Other",
+          "label_ar": "أخرى",
+          "field_name": "approach[2][method][8][value]"
+        }
+      }
+    },
+    "cost_approach": {
+      "label_en": "Cost Approach",
+      "label_ar": "أسلوب التكلفة",
+      "required": true,
+      "field_name": "approach[3][is_primary]",
+      "options": [
+            { "value": "", "label_ar": "غير مستخدم", "label_en": "Not Used" },
+            { "value": 1, "label_ar": "أساسي لتقدير القيمة", "label_en": "Primary for Valuation" },
+            { "value": 2, "label_ar": "مساعد لتقدير القيمة", "label_en": "Supporting for Valuation" }
+          ],
+      "methods": {
+        "replacement_cost": {
+          "label_en": "Replacement Cost Method",
+          "label_ar": "طريقة تكلفة الإحلال",
+          "field_name": "approach[3][method][9][value]"
+        },
+        "reproduction_cost": {
+          "label_en": "Reproduction Cost Method",
+          "label_ar": "طريقة تكلفة إعادة الإنتاج",
+          "field_name": "approach[3][method][10][value]"
+        },
+        "summation_method": {
+          "label_en": "Summation Method",
+          "label_ar": "طريقة الجمع",
+          "field_name": "approach[3][method][11][value]"
+        },
+        "other": {
+          "label_en": "Other",
+          "label_ar": "أخرى",
+          "field_name": "approach[3][method][12][value]"
+        }
+      }
+    }
+  },
+  "location_information": {
+    "country": {
+      "label_en": "Country",
+      "label_ar": "الدولة",
+      "required": true,
+      "field_name": "country_id",
+      "options": [
+        { "value": 1, "label_ar": "المملكة العربية السعودية", "label_en": "Saudi Arabia" },
+        { "value": 2, "label_ar": "الإمارات العربية المتحدة", "label_en": "United Arab Emirates" },
+        { "value": 3, "label_ar": "مملكة البحرين", "label_en": "Kingdom of Bahrain" },
+        { "value": 4, "label_ar": "دولة الكويت", "label_en": "State of Kuwait" },
+        { "value": 5, "label_ar": "سلطنة عمان", "label_en": "Sultanate of Oman" },
+        { "value": 6, "label_ar": "دولة قطر", "label_en": "State of Qatar" },
+        { "value": 7, "label_ar": "مصر", "label_en": "Egypt" },
+        { "value": 8, "label_ar": "اليمن", "label_en": "Yemen" },
+        { "value": 9, "label_ar": "سوريا", "label_en": "Syria" },
+        { "value": 10, "label_ar": "الجزائر", "label_en": "Algeria" },
+        { "value": 11, "label_ar": "لبنان", "label_en": "Lebanon" },
+        { "value": 12, "label_ar": "المغرب", "label_en": "Morocco" },
+        { "value": 13, "label_ar": "تونس", "label_en": "Tunisia" },
+        { "value": 14, "label_ar": "السودان", "label_en": "Sudan" },
+        { "value": 15, "label_ar": "الصومال", "label_en": "Somalia" },
+        { "value": 16, "label_ar": "العراق", "label_en": "Iraq" },
+        { "value": 17, "label_ar": "ليبيا", "label_en": "Libya" }
+      ]
+    },
+    "region": {
+      "label_en": "Region",
+      "label_ar": "المنطقة",
+      "required": true,
+      "field_name": "region_id",
+      "options": [
+        { "value": "", "label_ar": "تحديد", "label_en": "Select" },
+        { "value": 1, "label_ar": "منطقة الرياض", "label_en": "Riyadh Region" },
+        { "value": 2, "label_ar": "المنطقة الشرقية", "label_en": "Eastern Province" },
+        { "value": 3, "label_ar": "مكة المكرمة", "label_en": "Makkah" },
+        { "value": 4, "label_ar": "منطقة المدينة", "label_en": "Madinah Region" },
+        { "value": 5, "label_ar": "القصيم", "label_en": "Al-Qassim" },
+        { "value": 6, "label_ar": "منطقة تبوك", "label_en": "Tabuk Region" },
+        { "value": 7, "label_ar": "منطقة الحدود الشمالية", "label_en": "Northern Borders" },
+        { "value": 8, "label_ar": "منطقة الجوف", "label_en": "Al Jawf" },
+        { "value": 9, "label_ar": "منطقة حائل", "label_en": "Hail Region" },
+        { "value": 10, "label_ar": "منطقة الباحة", "label_en": "Al Bahah" },
+        { "value": 11, "label_ar": "منطقة جازان", "label_en": "Jazan Region" },
+        { "value": 12, "label_ar": "منطقة عسير", "label_en": "Asir Region" },
+        { "value": 13, "label_ar": "منطقة نجران", "label_en": "Najran Region" },
+        { "value": 14, "label_ar": "دبي", "label_en": "Dubai" },
+        { "value": 15, "label_ar": "أبوظبي", "label_en": "Abu Dhabi" },
+        { "value": 16, "label_ar": "الشارقة", "label_en": "Sharjah" }
+      ]
+    },
+    "city": {
+      "label_en": "City",
+      "label_ar": "المدينة",
+      "required": true,
+      "field_name": "city_id"
+    },
+    "longitude": {
+      "label_en": "Longitude",
+      "label_ar": "خط الطول",
+      "required": true,
+      "field_name": "longitude"
+    },
+    "latitude": {
+      "label_en": "Latitude",
+      "label_ar": "خط العرض",
+      "required": true,
+      "field_name": "latitude"
+    },
+    "search_input": {
+      "label_en": "Search here ...",
+      "label_ar": "ابحث هنا ...",
+      "field_name": "searchInput"
+    }
+  },
+  "additional_information": {
+    "block_number": {
+      "label_en": "Block Number",
+      "label_ar": "رقم المربع",
+      "field_name": "attribute[1]"
+    },
+    "property_number": {
+      "label_en": "Property Number",
+      "label_ar": "رقم المبنى",
+      "field_name": "attribute[2]"
+    },
+    "certificate_number": {
+      "label_en": "Certificate Number",
+      "label_ar": "رقم الصك",
+      "required": true,
+      "field_name": "attribute[3]"
+    },
+    "ownership_type": {
+      "label_en": "Ownership Type",
+      "label_ar": "نوع الملكية",
+      "required": true,
+      "field_name": "attribute[4]",
+      "options": [
+        { "value": "", "label_ar": "تحديد", "label_en": "Select" },
+        { "value": 1, "label_ar": "ملكية", "label_en": "Ownership" },
+        { "value": 2, "label_ar": "حق انتفاع", "label_en": "Usufruct" },
+        { "value": 3, "label_ar": "إيجار", "label_en": "Lease" },
+        { "value": 4, "label_ar": "أخرى", "label_en": "Other" },
+        { "value": 52, "label_ar": "ملكية مشاعة", "label_en": "Joint Ownership" }
+      ]
+    },
+    "ownership_percentage": {
+      "label_en": "Ownership percentage",
+      "label_ar": "نسبة الملكية",
+      "required": true,
+      "field_name": "attribute[5]"
+    },
+    "rental_duration": {
+      "label_en": "Rental duration",
+      "label_ar": "مدة الاستئجار",
+      "field_name": "attribute[6]"
+    },
+    "rental_end_date": {
+      "label_en": "Rental end date",
+      "label_ar": "تاريخ انتهاء الاستئجار",
+      "required": true,
+      "field_name": "attribute[7]"
+    },
+    "street_facing_fronts": {
+      "label_en": "Street facing fronts",
+      "label_ar": "الواجهات المطلة على الشارع",
+      "required": true,
+      "field_name": "attribute[8]",
+      "options": [
+        { "value": "", "label_ar": "تحديد", "label_en": "Select" },
+        { "value": 6, "label_ar": "واجهة واحدة", "label_en": "Single Front" },
+        { "value": 7, "label_ar": "واجهتان", "label_en": "Two Fronts" },
+        { "value": 8, "label_ar": "3 واجهات", "label_en": "3 Fronts" },
+        { "value": 9, "label_ar": "4 واجهات", "label_en": "4 Fronts" }
+      ]
+    },
+    "distance_from_city_center": {
+      "label_en": "Distance from City Center",
+      "label_ar": "المسافة عن وسط المدينة (كم)",
+      "field_name": "attribute[9]"
+    },
+    "facilities": {
+      "label_en": "Facilities",
+      "label_ar": "المرافق",
+      "required": true,
+      "field_name": "attribute[10][]",
+      "options": [
+        { "value": 10, "label_ar": "كهرباء حكومي", "label_en": "Government Electricity" },
+        { "value": 11, "label_ar": "طرق رئيسي", "label_en": "Main Roads" },
+        { "value": 12, "label_ar": "مياه شرب", "label_en": "Drinking Water" },
+        { "value": 13, "label_ar": "صرف صحي", "label_en": "Sewage" },
+        { "value": 14, "label_ar": "غاز طبيعي", "label_en": "Natural Gas" }
+      ]
+    },
+    "land_area": {
+      "label_en": "Land Area",
+      "label_ar": "مساحة الأرض (م²)",
+      "required": true,
+      "field_name": "attribute[11]"
+    },
+    "building_area": {
+      "label_en": "Building Area",
+      "label_ar": "مساحة مسطحات البناء (م²)",
+      "field_name": "attribute[12]"
+    },
+    "authorized_land_cover_percentage": {
+      "label_en": "Authorized Land Cover Percentage",
+      "label_ar": "مساحة البناء المصرح بها (نسبة مئوية)",
+      "required": true,
+      "field_name": "attribute[13]"
+    },
+    "authorized_height": {
+      "label_en": "Authorized height",
+      "label_ar": "عدد الأدوار المصرح به",
+      "required": true,
+      "field_name": "attribute[14]"
+    },
+    "land_under_building_leased": {
+      "label_en": "The land of this building is leased",
+      "label_ar": "الأرض تحت المبنى مستأجرة",
+      "required": true,
+      "field_name": "attribute[15]",
+      "options": [
+        { "value": 17, "label_ar": "نعم", "label_en": "Yes" },
+        { "value": 18, "label_ar": "لا", "label_en": "No" }
+      ]
+    },
+    "building_status": {
+      "label_en": "Building Status",
+      "label_ar": "حالة البناء",
+      "required": true,
+      "field_name": "attribute[16]",
+      "options": [
+        { "value": "", "label_ar": "تحديد", "label_en": "Select" },
+        { "value": 19, "label_ar": "مكتمل الإنشاء", "label_en": "Construction Complete" },
+        { "value": 20, "label_ar": "تحت الإنشاء", "label_en": "Under Construction" }
+      ]
+    },
+    "finishing_status": {
+      "label_en": "Finishing Status",
+      "label_ar": "حالة التشطيب",
+      "required": true,
+      "field_name": "attribute[17]",
+      "options": [
+        { "value": "", "label_ar": "تحديد", "label_en": "Select" },
+        { "value": 21, "label_ar": "بدون تشطيب", "label_en": "Without Finishing" },
+        { "value": 22, "label_ar": "تشطيب خارجي فقط", "label_en": "External Finishing Only" },
+        { "value": 23, "label_ar": "تشطيب داخلي", "label_en": "Internal Finishing" }
+      ]
+    },
+    "furnishing_status": {
+      "label_en": "Furnishing Status",
+      "label_ar": "حالة التأثيث",
+      "required": true,
+      "field_name": "attribute[18]",
+      "options": [
+        { "value": "", "label_ar": "تحديد", "label_en": "Select" },
+        { "value": 24, "label_ar": "مكتمل التأثيث", "label_en": "Fully Furnished" },
+        { "value": 25, "label_ar": "نصف مؤثث", "label_en": "Semi-Furnished" },
+        { "value": 26, "label_ar": "غير مؤثث", "label_en": "Unfurnished" }
+      ]
+    },
+    "air_conditioning": {
+      "label_en": "Air Conditioning",
+      "label_ar": "التكييف",
+      "required": true,
+      "field_name": "attribute[19]",
+      "options": [
+        { "value": "", "label_ar": "تحديد", "label_en": "Select" },
+        { "value": 27, "label_ar": "غير مكيف", "label_en": "Not Air Conditioned" },
+        { "value": 28, "label_ar": "وحدات شباك", "label_en": "Window Units" },
+        { "value": 29, "label_ar": "وحدات منفصلة", "label_en": "Split Units" },
+        { "value": 30, "label_ar": "تكييف مركزي", "label_en": "Central Air Conditioning" }
+      ]
+    },
+    "building_type": {
+      "label_en": "Building Type",
+      "label_ar": "نوع المبنى",
+      "required": true,
+      "field_name": "attribute[20]",
+      "options": [
+        { "value": "", "label_ar": "تحديد", "label_en": "Select" },
+        { "value": 31, "label_ar": "جزء من مبنى", "label_en": "Part of Building" },
+        { "value": 32, "label_ar": "مبنى مستقل", "label_en": "Independent Building" },
+        { "value": 33, "label_ar": "مشروع متعدد المباني", "label_en": "Multi-Building Project" }
+      ]
+    },
+    "additional_features": {
+      "label_en": "Other Features",
+      "label_ar": "ميزات إضافية",
+      "required": true,
+      "field_name": "attribute[21][]",
+      "options": [
+        { "value": 34, "label_ar": "مسابح", "label_en": "Swimming Pools" },
+        { "value": 35, "label_ar": "مواقف سيارات", "label_en": "Parking" },
+        { "value": 36, "label_ar": "نادي رياضي", "label_en": "Sports Club" },
+        { "value": 37, "label_ar": "أنظمة صوتية", "label_en": "Audio Systems" },
+        { "value": 38, "label_ar": "إنذار وإطفاء حريق", "label_en": "Fire Alarm and Extinguishing" },
+        { "value": 39, "label_ar": "شبكة مراقبة تلفزيونية", "label_en": "CCTV Network" }
+      ]
+    },
+    "current_use_is_best_use": {
+      "label_en": "The current use is considered the best use",
+      "label_ar": "يعتبر الاستخدام الحالي أفضل استخدام",
+      "required": true,
+      "field_name": "attribute[27]",
+      "options": [
+        { "value": 50, "label_ar": "نعم", "label_en": "Yes" },
+        { "value": 51, "label_ar": "لا", "label_en": "No" }
+      ]
+    },
+    "asset_age": {
+      "label_en": "Asset Age",
+      "label_ar": "عمر الأصل محل التقييم",
+      "required": true,
+      "field_name": "attribute[28]"
+    },
+    "street_width": {
+      "label_en": "Street width",
+      "label_ar": "عرض الشارع",
+      "field_name": "attribute[31]"
+    }
+  },
+  "form_actions": {
+    "save_and_close": {
+      "label_en": "Save and Close",
+      "label_ar": "حفظ وإغلاق",
+      "field_name": "save"
+    },
+    "save_and_continue": {
+      "label_en": "Save and Continue",
+      "label_ar": "حفظ واستمرار",
+      "field_name": "continue"
+    }
+  },
+  "hidden_fields": {
+    "country": { "field_name": "country", "type": "hidden" },
+    "region": { "field_name": "region", "type": "hidden" },
+    "city": { "field_name": "city", "type": "hidden" },
+    "district": { "field_name": "district", "type": "hidden" },
+    "street": { "field_name": "street", "type": "hidden" },
+    "address": { "field_name": "address", "type": "hidden" },
+    "action_type": { "field_name": "action_type", "type": "hidden" }
+  }
+}
+
+
+
+
+/** 
+* Paste one or more documents here
+*/
+{
+  ""type": "eval_model_scraped",
+    "query": "005444",
+    "payload": {
+      "estimation_reason": "تمويل بنكي",
+      "estimation_base": "القيمة السوقية",
+      "actual_evaluation_date_m": "20-08-2025 00:00",
+      "actual_inspection_date_m": "18-08-2025 14:10",
+      "client_name": "شركة بن لادن للاستثمارات",
+      "property_type": "أرض",
+      "property_use": "تجاري",
+      "location": "مكة - العزيزية",
+      "approach_market": "نعم",
+      "approach_income": "نعم",
+      "approach_cost": "لا",
+      "final_valuation_value": "15,300,500.00",
+      "latitude": "21.389100",
+      "longitude": "39.857910",
+      "plan_no": "541 / ج",
+      "parcel_no": "4210",
+      "title_deed_no": "3989904587301111",
+      "land_area": "1,200",
+      "street_view": "40م",
+    "offers": [
+      {
+        "sell_date": "-",
+        "subject_type": null,
+        "comp_type": null,
+        "land_area": "0",
+        "build_area": "0",
+        "total_price": "0.00",
+        "source": null,
+        "streets_count": null,
+        "street_width": null,
+        "description": null,
+        "coordinates": null
+      },
+      {
+        "sell_date": "-",
+        "subject_type": null,
+        "comp_type": null,
+        "land_area": "0",
+        "build_area": "0",
+        "total_price": "0.00",
+        "source": null,
+        "streets_count": null,
+        "street_width": null,
+        "description": null,
+        "coordinates": null
+      },
+      {
+        "sell_date": "-",
+        "subject_type": null,
+        "comp_type": null,
+        "land_area": "0",
+        "build_area": "0",
+        "total_price": "0.00",
+        "source": null,
+        "streets_count": null,
+        "street_width": null,
+        "description": null,
+        "coordinates": null
+      }
+    ],
+    "ownership_type": "صك شرعي",
+      "scraped_at": "2025-09-02T11:00:12.506135+00:00"
+  },
+  "ts": {
+      "$date": "2025-09-02T11:00:12.805Z"
+    }
+}
