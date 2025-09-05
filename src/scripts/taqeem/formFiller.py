@@ -3,110 +3,28 @@ import asyncio
 import json
 import os
 import time
+import traceback
 
-async def handle_checkbox_group_comprehensive(page, selector, target_value, field_name):
-    """Comprehensive checkbox handler for your specific HTML structure"""
-    try:
-        # Find all checkbox containers
-        checkbox_containers = await page.query_selector_all("div.form-check")
-        
-        for container in checkbox_containers:
-            # Get the label within this container
-            label = await container.query_selector("label.form-check-label")
-            if not label:
-                continue
-                
-            label_text = await label.text_content()
-            label_text = label_text.strip() if label_text else ""
-            
-            # Check if this label matches our target value
-            if label_text and target_value.lower() in label_text.lower():
-                # Get the checkbox within this container
-                checkbox = await container.query_selector("input[type='checkbox']")
-                if checkbox:
-                    # Determine if we should check or uncheck
-                    should_check = target_value.lower() not in ['no', 'false', '0', 'off', 'unchecked']
-                    
-                    is_checked = await checkbox.is_checked()
-                    if should_check != is_checked:
-                        await checkbox.click()
-                        print(f"{'Checked' if should_check else 'Unchecked'} '{label_text}'")
-                    return True
-        
-        print(f"Checkbox '{target_value}' not found in group {field_name}")
-        return False
-        
-    except Exception as e:
-        print(f"Error in comprehensive checkbox handling: {e}")
-        return False
+from formSteps import form_steps
+from browser import get_page          
 
-async def find_associated_label(page, element):
-    """Find label associated with an input element using various methods"""
-    try:
-        # Method 1: Label with for attribute
-        element_id = await element.get_attribute("id")
-        if element_id:
-            label = await page.query_selector(f"label[for='{element_id}']")
-            if label:
-                return label
-        
-        # Method 2: Label that wraps the input (parent label)
-        parent_label = await element.query_selector("xpath=./ancestor::label")
-        if parent_label:
-            return parent_label
-        
-        # Method 3: Label that is next sibling or previous sibling
-        # Look for immediate sibling label
-        next_sibling = await element.query_selector("xpath=./following-sibling::label[1]")
-        if next_sibling:
-            return next_sibling
-        
-        prev_sibling = await element.query_selector("xpath=./preceding-sibling::label[1]")
-        if prev_sibling:
-            return prev_sibling
-        
-        # Method 4: Look for label in the same container/row
-        # This is more complex and might need customization based on your HTML structure
-        container = await element.query_selector("xpath=./ancestor::div[contains(@class, 'form-group') or contains(@class, 'checkbox') or contains(@class, 'radio')]")
-        if container:
-            label = await container.query_selector("label")
-            if label:
-                return label
-        
-        # Method 5: Look for text near the input that might be a label
-        # This is a fallback approach
-        parent = await element.query_selector("xpath=./..")
-        if parent:
-            parent_text = await parent.text_content()
-            if parent_text and len(parent_text.strip()) > 0:
-                # If parent has text, it might be acting as a label
-                return parent
-        
-        return None
-        
-    except Exception as e:
-        print(f"Error finding associated label: {e}")
-        return None
 
 async def select_select2_option_simple(page, selector, value):
     try:
         print(f"Selecting Select2 option: {value}")
-        
         element = await page.find(selector)
-        print("this the boy", element)
         
         if not element:
             print(f"No Select2 element found for {selector}")
             return False
 
-        # Force open dropdown
         await element.apply("""
         (el) => {
             const evt = new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window });
             el.dispatchEvent(evt);
         }
         """)
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1)
 
 
         search_input = await wait_for_element(page, "input.select2-search__field", timeout=5)
@@ -115,6 +33,9 @@ async def select_select2_option_simple(page, selector, value):
             return False
 
         await search_input.focus()
+        await search_input.clear_input()
+        await asyncio.sleep(0.1)
+
         await search_input.send_keys(value)
         await search_input.apply("""
         (el) => {
@@ -130,7 +51,8 @@ async def select_select2_option_simple(page, selector, value):
         el.dispatchEvent(evt);
 }
         """)
-        await asyncio.sleep(0.5)
+
+        await asyncio.sleep(1)
         
         print(f"Successfully selected: {value}")
         return True
@@ -153,19 +75,17 @@ async def wait_for_element(page, selector, timeout=30, check_interval=1):
 
 async def extractData(file_path, pdf_paths):
     try:
-        # Read Excel file
         df = pd.read_excel(file_path)
         df = df.fillna("")
 
         records = df.to_dict(orient="records")
 
-        # Build lookup by file name -> absolute path
         pdf_lookup = {os.path.basename(pdf_path): os.path.abspath(pdf_path) for pdf_path in pdf_paths}
 
         for record in records:
             pdf_name = str(record.get("Report Asset File", "")).strip()
+
             if pdf_name and pdf_name in pdf_lookup:
-                # ✅ Directly use the absolute path from multer
                 record["Report Asset File"] = os.path.normpath(pdf_lookup[pdf_name])
             else:
                 record["Report Asset File"] = ""
@@ -173,10 +93,10 @@ async def extractData(file_path, pdf_paths):
         json_str = json.dumps(records, default=str, ensure_ascii=False)
         json_data = json.loads(json_str)
 
-        # ✅ Cleanup after processing
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
+
         except Exception as del_err:
             return {
                 "status": "SUCCESS",
@@ -204,6 +124,9 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False):
                     if "readonly" in element.attrs:
                         print("element readonly", element)
                         await element.apply("(el) => el.removeAttribute('readonly')")
+
+                    await element.clear_input()
+                    await asyncio.sleep(0.1)
                     await element.send_keys(value)
 
             elif field_type == "location":
@@ -244,8 +167,7 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False):
                     elements = await page.query_selector_all(selector)
                     if elements:
                         for element in elements:
-                            parent = await element.parent
-                            sibling = await parent.query_selector("div")
+                            sibling = await element.apply("(el) => el.nextElementSibling")
                             if sibling:
                                 labelText = sibling.text
                                 if labelText and value.lower() in labelText.lower():
@@ -289,7 +211,6 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False):
                             if label:
                                 label_text = label.text
                                 if label_text and value.lower() in label_text.lower():
-                                    # Click either the label or the checkbox
                                     await check.click()
                                     option_found = True
                                     print(f"Selected checkbox by label text: {value}")
@@ -327,3 +248,42 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False):
     except Exception as e:
         print(f"Error clicking continue button: {e}")
         return False
+    
+
+async def runFormFill(page, file_path, pdf_paths):
+    try:
+        # 1. Extract records
+        result = await extractData(file_path, pdf_paths)
+        if result["status"] != "SUCCESS":
+            return result
+
+        records = result["data"]
+
+        print(json.dumps({"status": "EXTRACTED_DATA", "data": records}), flush=True)
+
+        for record in records:
+            for step_num, step_config in enumerate(form_steps, 1):
+                is_last_step = (step_num == len(form_steps))
+                print(f"Processing step {step_num}...", flush=True)
+
+                await fill_form(
+                    page,
+                    record,
+                    step_config["field_map"],
+                    step_config["field_types"],
+                    is_last_step
+                )
+
+                if is_last_step:
+                    print(json.dumps({
+                        "status": "FORM_FILL_SUCCESS",
+                        "message": "Form submitted successfully",
+                        "recoverable": True
+                    }), flush=True)
+                    break
+
+        return {"status": "SUCCESS"}
+
+    except Exception as e:
+        tb = traceback.format_exc()
+        return {"status": "FAILED", "error": str(e), "traceback": tb}
