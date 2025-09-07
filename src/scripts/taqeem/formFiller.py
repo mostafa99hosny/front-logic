@@ -1,13 +1,11 @@
-import pandas as pd
 import asyncio
 import json
-import os
 import time
 import traceback
+import os
+from motor.motor_asyncio import AsyncIOMotorClient
 
 from formSteps import form_steps
-from browser import get_page          
-
 
 async def select_select2_option_simple(page, selector, value):
     try:
@@ -73,43 +71,7 @@ async def wait_for_element(page, selector, timeout=30, check_interval=1):
         await asyncio.sleep(check_interval)
     return None
 
-async def extractData(file_path, pdf_paths):
-    try:
-        df = pd.read_excel(file_path)
-        df = df.fillna("")
-
-        records = df.to_dict(orient="records")
-
-        pdf_lookup = {os.path.basename(pdf_path): os.path.abspath(pdf_path) for pdf_path in pdf_paths}
-
-        for record in records:
-            pdf_name = str(record.get("Report Asset File", "")).strip()
-
-            if pdf_name and pdf_name in pdf_lookup:
-                record["Report Asset File"] = os.path.normpath(pdf_lookup[pdf_name])
-            else:
-                record["Report Asset File"] = ""
-
-        json_str = json.dumps(records, default=str, ensure_ascii=False)
-        json_data = json.loads(json_str)
-
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-
-        except Exception as del_err:
-            return {
-                "status": "SUCCESS",
-                "data": json_data,
-                "warning": f"Cleanup error: {del_err}"
-            }
-
-        return {"status": "SUCCESS", "data": json_data}
-
-    except Exception as e:
-        return {"status": "FAILED", "error": str(e)}
-
-async def fill_form(page, record, field_map, field_types, is_last_step=False):
+async def fill_form(page, record, field_map, field_types, is_last_step=False, retries=0, max_retries=2):
     for key, selector in field_map.items():
         if key not in record:
             continue
@@ -234,39 +196,91 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False):
                 await asyncio.sleep(0.5)
                 await continue_btn.click()
 
-                await asyncio.sleep(5)
+                await asyncio.sleep(2)
+
+                error_div = await wait_for_element(page, "div[class='alert alert-danger']", timeout=10)
+                if error_div:
+                    print("Validation error found: retrying step")
+
+                    if retries < max_retries:
+                        await asyncio.sleep(1)
+                        return await fill_form(page, record, field_map, field_types, is_last_step, retries + 1, max_retries)
+                    else:
+                        print("Max retries reached - returning error")
+                        return {"status": "FAILED", "error": "Validation error found"}
+                
+
                 await wait_for_element(page, "input", timeout=10)
-                            
                 return True  
             else:
                 print("No continue button found - may be on final step")
                 return False
         else:
-            print("Last step completed - not clicking continue button")
-            return False
+            print("Last step completed - clicking save button")
+            save_btn = await wait_for_element(page, "input[name='save']", timeout=10)
+            if save_btn:
+                await asyncio.sleep(0.5)
+                await save_btn.click()
+                await asyncio.sleep(5)  # wait for save to process
+
+                current_url = await page.evaluate("window.location.href")
+                print(f"Current URL: {current_url}")
+                form_id = current_url.rstrip("/").split("/")[-1]  
+                print(f"Extracted formId: {form_id}")
+
+                if form_id:
+                    await db.taqeemforms.update_one(
+                    {"_id": record["_id"]},
+                    {"$set": {"formId": form_id}}
+                    )
+                    print(f"Updated record {record['_id']} with formId {form_id}")
+            else:
+                return {"status": "FAILED", "error": "Save button not found"}
+            
+            await asyncio.sleep(0.2)
             
     except Exception as e:
         print(f"Error clicking continue button: {e}")
         return False
     
+MONGO_URI = "mongodb+srv://uzairrather3147:Uzair123@cluster0.h7vvr.mongodb.net/mekyas"
 
-async def runFormFill(page, file_path, pdf_paths):
+client = AsyncIOMotorClient(MONGO_URI)
+db = client["mekyas"]
+
+async def runFormFill(page, batch_id):
     try:
-        # 1. Extract records
-        result = await extractData(file_path, pdf_paths)
-        if result["status"] != "SUCCESS":
-            return result
+        cursor = db.taqeemforms.find({"batchId": batch_id})
+        records = await cursor.to_list(length=None)
 
-        records = result["data"]
+        results = []  # collect messages here
 
-        print(json.dumps({"status": "EXTRACTED_DATA", "data": records}), flush=True)
+        results.append({"status": "FETCHED_DATA", "count": len(records)})
+
+        if not records:
+            return {
+                "status": "FAILED",
+                "error": f"No records found for batchId={batch_id}",
+                "records": results
+            }
+
+        failed_count = 0
 
         for record in records:
+            if record.get("formId"):
+                continue  # already filled, skip
+
+            record_failed = False
+
             for step_num, step_config in enumerate(form_steps, 1):
                 is_last_step = (step_num == len(form_steps))
-                print(f"Processing step {step_num}...", flush=True)
+                results.append({
+                    "status": "STEP_STARTED",
+                    "step": step_num,
+                    "recordId": str(record["_id"])
+                })
 
-                await fill_form(
+                result = await fill_form(
                     page,
                     record,
                     step_config["field_map"],
@@ -274,16 +288,41 @@ async def runFormFill(page, file_path, pdf_paths):
                     is_last_step
                 )
 
-                if is_last_step:
-                    print(json.dumps({
-                        "status": "FORM_FILL_SUCCESS",
-                        "message": "Form submitted successfully",
-                        "recoverable": True
-                    }), flush=True)
+                if isinstance(result, dict) and result.get("status") == "FAILED":
+                    record_failed = True
+                    failed_count += 1
+                    results.append({
+                        "status": "FAILED",
+                        "step": step_num,
+                        "recordId": str(record["_id"]),
+                        "error": result.get("error")
+                    })
                     break
 
-        return {"status": "SUCCESS"}
+                if is_last_step and not record_failed:
+                    results.append({
+                        "status": "FORM_FILL_SUCCESS",
+                        "message": "Form submitted successfully",
+                        "recordId": str(record["_id"]),
+                        "batchId": batch_id
+                    })
+
+            # reset form page for next record
+            await page.get("https://qima.taqeem.sa/report/create/1/137")
+            await asyncio.sleep(1)
+
+        # final summary
+        return {
+            "status": "SUCCESS",
+            "batchId": batch_id,
+            "failed_records": failed_count,
+            "results": results
+        }
 
     except Exception as e:
         tb = traceback.format_exc()
-        return {"status": "FAILED", "error": str(e), "traceback": tb}
+        return {
+            "status": "FAILED",
+            "error": str(e),
+            "traceback": tb
+        }

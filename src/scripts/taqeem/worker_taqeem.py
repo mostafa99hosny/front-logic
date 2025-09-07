@@ -37,7 +37,7 @@ async def worker():
                 result = await submitOtp(page, cmd.get("otp",""))
 
             elif action == "formFill":
-                result = await runFormFill(page, cmd.get("file"), cmd.get("pdfs"))
+                result = await runFormFill(page, cmd.get("batchId",""))
 
             elif action == "close":
                 await closeBrowser()

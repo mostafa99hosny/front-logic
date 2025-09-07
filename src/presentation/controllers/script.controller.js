@@ -1,6 +1,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const AppError = require('../../shared/utils/appError');
+const extractData = require("../../application/taqeem/extractData.uc");
 
 let pyWorker = null;
 let stdoutBuffer = '';
@@ -14,7 +15,7 @@ function ensurePyWorker() {
   const venvPython = isWin
     ? path.join(__dirname, '../../../.venv/Scripts/python.exe')
     : path.join(__dirname, '../../../.venv/bin/python');
-    
+
   const scriptPath = path.join(__dirname, '../../scripts/taqeem/worker_taqeem.py');
 
   pyWorker = spawn(venvPython, [scriptPath], {
@@ -161,7 +162,16 @@ const runTaqeemScript = async (req, res, next) => {
     if (otp) {
       payload = { action: "otp", otp };
     } else if (formFilePath) {
-      payload = { action: "formFill", file: formFilePath, pdfs: pdfFilePaths };
+      const result = await extractData(formFilePath, pdfFilePaths);
+
+      if (result.status !== "SUCCESS") {
+        return res.status(400).json({
+          success: false,
+          message: result.message
+        });
+      }
+      payload = { action: "formFill", batchId: result.batchId };
+
     } else {
       payload = { action: "login", email, password };
     }
@@ -180,7 +190,32 @@ const runTaqeemScript = async (req, res, next) => {
   }
 };
 
+const retryTaqeemScript = async (req, res, next) => {
+  const { batchId } = req.params; // batchId comes from URL (/scripts/retryUpload/:batchId)
+
+  if (!batchId) {
+    return res.status(400).json({
+      success: false,
+      message: "batchId is required"
+    });
+  }
+
+  try {
+    const payload = { action: "formFill", batchId };
+    const responses = await sendCommand(payload);
+
+    // Always return the last response (since formFill emits multiple logs/events)
+    res.json(responses[responses.length - 1] || { status: "UNKNOWN_RESPONSE" });
+
+  } catch (err) {
+    console.error("[retryTaqeemScript] error:", err);
+    next(err instanceof AppError ? err : new AppError(String(err), 500));
+  }
+};
+
+
 module.exports = {
   runTaqeemScript,
+  retryTaqeemScript,
   closeWorker,
 };

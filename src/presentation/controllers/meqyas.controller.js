@@ -14,7 +14,7 @@ const runMeqyasScript = async (req, res, next) => {
     const venvPython = isWin
         ? path.join(__dirname, '../../../.venv/Scripts/python.exe')
         : path.join(__dirname, '../../../.venv/bin/python');
-        
+
     const scriptCwd = path.join(__dirname, '../../scripts/meqyas');
 
     const py = spawn(venvPython, ["-m", "src.main", username, password, query], {

@@ -7,7 +7,7 @@ class UserController {
   async register(req, res) {
     try {
       const result = await createUserUseCase.execute(req.body);
-      
+
       if (!result.success) {
         return res.status(400).json({
           success: false,
@@ -72,9 +72,9 @@ class UserController {
 
       // Generate token
       const token = jwt.sign(
-        { 
-          userId: user._id, 
-          email: user.email 
+        {
+          userId: user._id,
+          email: user.email
         },
         process.env.JWT_SECRET || 'your-secret-key',
         { expiresIn: '7d' }
