@@ -1,5 +1,7 @@
+
+# actions.py
 from playwright.async_api import Page
-from .selectorsFile import SEARCH
+from .selectors import SEARCH
 from .config import SCREENSHOTS, ARTIFACTS_DIR
 from .utils import log, snap
 
@@ -15,6 +17,7 @@ async def run_quick_search(page: Page, query: str):
     log("Clicking search button ...")
     await page.click(SEARCH["search_button"])
 
+    # Let results load (can be refined with a dedicated results selector later)
     try:
         await page.wait_for_load_state("networkidle", timeout=20000)
     except Exception:

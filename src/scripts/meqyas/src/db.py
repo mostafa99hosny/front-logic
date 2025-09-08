@@ -1,3 +1,4 @@
+# src/db.py
 from __future__ import annotations
 
 import os
@@ -19,9 +20,9 @@ def _get_collection():
     """
     global _CLIENT, _DB_NAME, _COLL_NAME
 
-    mongo_uri = os.getenv("MONGO_URI_M")
-    _DB_NAME = os.getenv("DB_NAME", "projectForever")
-    _COLL_NAME = os.getenv("COLLECTION_NAME", "completed_reports")
+    mongo_uri = "mongodb+srv://uzairrather3147:Uzair123@cluster0.h7vvr.mongodb.net/mekyas"
+    _DB_NAME = "meqyas"
+    _COLL_NAME = "Meqyas"
 
     if not mongo_uri:
         log("MONGO_URI not set; DB calls will be skipped.", "WARN")

@@ -49,7 +49,7 @@ const runMeqyasScript = async (req, res, next) => {
     }
 
     const scriptCwd = path.join(__dirname, '../../scripts/meqyas');
-    runPythonScript(scriptCwd, [username, password, query], next, res);
+    runPythonScript(scriptCwd, [username, password, query], next, res); 
 };
 
 const runMultipleMeqyasScript = async (req, res, next) => {

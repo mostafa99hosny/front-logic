@@ -1,6 +1,8 @@
+
+# auth.py
 from playwright.async_api import Page
 from .config import TARGET_URL, SCREENSHOTS, ARTIFACTS_DIR
-from .selectorsFile import LOGIN
+from .selectors import LOGIN
 from .utils import log, snap
 
 async def login(page: Page, username: str, password: str):
