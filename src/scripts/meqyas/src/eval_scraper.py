@@ -185,47 +185,126 @@ async def _scrape_offer_row(page: Page, i: int) -> Dict[str, Optional[str]]:
 # Main scraping API
 # =========================
 
+# def _empty_payload() -> Dict[str, Any]:
+#     """Only the fields requested 'for now'."""
+#     return {
+#         # High-level purpose/base
+#         "estimation_reason": None,   # غرض التقييم
+#         "estimation_base": None,     # أساس القيمة
+
+#         # Dates
+#         "actual_evaluation_date_m": None,  # TRI_ESTIMATION_DATE_TIME_id
+#         "actual_inspection_date_m": None,  # TRI_EST_ACTUAL_DATE_TIME_id
+
+#         # Client & categoricals
+#         "client_name": None,         # TRI_CLIENT_NAME-text
+#         "property_type": None,       # TRI_MYO_ID_id
+#         "property_use": None,        # MIS_PROPERTY_USE_id
+#         "location": None,            # TRI_CRI_ID_id
+
+#         # Toggles (yes/no)
+#         "approach_market": None,     # نعم/لا
+#         "approach_income": None,     # نعم/لا
+#         "approach_cost": None,       # نعم/لا
+
+#         # Numbers / coordinates
+#         "final_valuation_value": None,  # DTR_FINAL_PRICE-feild
+#         "latitude": None,               # TRI_LATITUDE-feild
+#         "longitude": None,              # TRI_LONGITUDE-feild
+#         "plan_no": None,                # DTR_PLAN_NO-text
+#         "parcel_no": None,              # DTR_PARCEL_NO-text
+#         "title_deed_no": None,          # TRI_TITLE_DEED_NO-text
+#         "land_area": None,              # DTR_LAND_AREA-feild
+#         "street_view": None,            # DTR_STREET_VIEW-text
+#         "ownership_type": None,
+
+
+#         # Comparable offers (rows 1..3)
+#         "offers": [],
+
+#         # Metadata
+#         "scraped_at": None,
+#     }
+
 def _empty_payload() -> Dict[str, Any]:
-    """Only the fields requested 'for now'."""
+    """Empty payload structure for mekyas documents"""
     return {
-        # High-level purpose/base
-        "estimation_reason": None,   # غرض التقييم
-        "estimation_base": None,     # أساس القيمة
+        
+        # Report information
+        "reportTitle": None,
+        "valuationPurpose": None,
+        "valuePremise": None,
+        "valueBase": None,
+        "reportType": None,
+        "valuationDate": None,
+        "reportIssuingDate": None,
+        "assumptions": None,
+        "specialAssumptions": None,
+        "finalValue": None,
+        "valuationCurrency": None,
+        "reportAssetFile": None,
 
-        # Dates
-        "actual_evaluation_date_m": None,  # TRI_ESTIMATION_DATE_TIME_id
-        "actual_inspection_date_m": None,  # TRI_EST_ACTUAL_DATE_TIME_id
+        # Client information
+        "clientName": None,
+        "telephoneNumber": None,
+        "emailAddress": None,
+        "hasOtherUsers": None,
+        "reportUser": None,
 
-        # Client & categoricals
-        "client_name": None,         # TRI_CLIENT_NAME-text
-        "property_type": None,       # TRI_MYO_ID_id
-        "property_use": None,        # MIS_PROPERTY_USE_id
-        "location": None,            # TRI_CRI_ID_id
+        # Valuer information
+        "valuerName": None,
+        "contributionPercentage": None,
 
-        # Toggles (yes/no)
-        "approach_market": None,     # نعم/لا
-        "approach_income": None,     # نعم/لا
-        "approach_cost": None,       # نعم/لا
+        # Asset details
+        "assetType": None,
+        "inspectionDate": None,
+        "assetUsageSector": None,
 
-        # Numbers / coordinates
-        "final_valuation_value": None,  # DTR_FINAL_PRICE-feild
-        "latitude": None,               # TRI_LATITUDE-feild
-        "longitude": None,              # TRI_LONGITUDE-feild
-        "plan_no": None,                # DTR_PLAN_NO-text
-        "parcel_no": None,              # DTR_PARCEL_NO-text
-        "title_deed_no": None,          # TRI_TITLE_DEED_NO-text
-        "land_area": None,              # DTR_LAND_AREA-feild
-        "street_view": None,            # DTR_STREET_VIEW-text
-        "ownership_type": None,
+        # Valuation approaches & methods
+        "marketApproach": None,
+        "comparableTransactionsMethod": None,
+        "incomeApproach": None,
+        "profitMethod": None,
+        "costApproach": None,
+        "summationMethod": None,
 
+        # Location
+        "country": None,
+        "region": None,
+        "city": None,
+        "longitude": None,
+        "latitude": None,
 
-        # Comparable offers (rows 1..3)
-        "offers": [],
+        # Asset identifiers & ownership
+        "certificateNumber": None,
+        "ownershipType": None,
 
-        # Metadata
-        "scraped_at": None,
+        # Asset physical details
+        "streetFacingFronts": None,
+        "facilities": None,
+        "landArea": None,
+        "buildingArea": None,
+        "authorizedLandCoverPercentage": None,
+        "authorizedHeight": None,
+        "landLeased": None,
+        "buildingStatus": None,
+        "finishingStatus": None,
+        "furnishingStatus": None,
+        "airConditioning": None,
+        "buildingType": None,
+        "otherFeatures": None,
+        "bestUse": None,
+        "assetAge": None,
+        "streetWidth": None,
+
+        # Meta
+        "batchId": None,
+        "status": None,
+        "retries": None,
+        "__v": None,
+        "createdAt": None,
+        "updatedAt": None,
     }
-
 
 async def scrape_eval_model(page: Page) -> Dict[str, Any]:
     """
