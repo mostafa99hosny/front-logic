@@ -1,5 +1,3 @@
-
-# auth.py
 from playwright.async_api import Page
 from .config import TARGET_URL, SCREENSHOTS, ARTIFACTS_DIR
 from .selectorsFile import LOGIN

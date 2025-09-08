@@ -2,7 +2,7 @@ const express = require('express');
 const upload = require('../../shared/middlewares/upload');
 
 const { runTaqeemScript, retryTaqeemScript } = require('../controllers/script.controller');
-const { runMeqyasScript } = require('../controllers/meqyas.controller');
+const { runMeqyasScript, runMultipleMeqyasScript } = require('../controllers/meqyas.controller');
 
 const scriptRouter = express.Router();
 
@@ -16,5 +16,6 @@ scriptRouter.post(
 
 scriptRouter.post('/retryTaqeem/:batchId', retryTaqeemScript);
 scriptRouter.post('/meqyas', runMeqyasScript);
+scriptRouter.post('/meqyasMultiple', runMultipleMeqyasScript);
 
 module.exports = scriptRouter;

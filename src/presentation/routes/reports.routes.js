@@ -12,6 +12,8 @@ router.get('/stats', ReportController.getReportStats);
 // GET /api/reports/filter-options - Get filter dropdown options
 router.get('/filter-options', ReportController.getFilterOptions);
 
+router.post('/createHalfReport', ReportController.createHalfReport);
+
 // GET /api/reports/export - Export reports data
 router.get('/export', ReportController.exportReports);
 

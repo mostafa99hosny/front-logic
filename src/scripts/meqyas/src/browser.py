@@ -1,4 +1,3 @@
-# browser.py
 import os
 from contextlib import asynccontextmanager
 from playwright.async_api import async_playwright, Browser, Page

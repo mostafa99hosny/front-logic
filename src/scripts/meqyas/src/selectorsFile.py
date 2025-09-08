@@ -1,6 +1,3 @@
-
-# selectors.py
-# Keep all selectors here for easy maintenance.
 LOGIN = {
     "username": "#username",
     "password": "#password",

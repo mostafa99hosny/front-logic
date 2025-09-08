@@ -1,13 +1,3 @@
-# pdf_flow.py
-# Behavior:
-# - Prefer inline primary action: click ONLY if it indicates Print/PDF (Arabic/English).
-# - If inline looks like View/عرض (or non-PDF), skip it.
-# - Always open 3-dots settings afterward.
-#     * If the FIRST dropdown item is PDF → click it → F10 → download → close tab →
-#       reopen 3-dots and click **"عرض نموذج التقييم"**.
-#     * If the FIRST dropdown item is NOT PDF → click **"عرض نموذج التقييم"** directly.
-# - Returns True iff a PDF was downloaded. (Eval click is always attempted when menu path is used.)
-
 from typing import Optional,Tuple
 from pathlib import Path
 import re
@@ -15,10 +5,6 @@ from urllib.parse import urlparse
 from playwright.async_api import Page, TimeoutError as PWTimeoutError
 from .utils import log, snap, ensure_dir
 from .config import SCREENSHOTS, ARTIFACTS_DIR, DOWNLOAD_DIR
-
-# ==============================
-# Selectors & constants
-# ==============================
 
 # Primary inline action (row button)
 PRIMARY_ACTION_LOCATOR = (

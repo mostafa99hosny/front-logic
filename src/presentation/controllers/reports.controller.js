@@ -1,6 +1,7 @@
 // front-logic/src/presentation/controllers/reports.controller.js
 const ReportService = require('../../application/reports/report.service');
 const ReportResponse = require('../../application/reports/report.response');
+const createHalfReportUC = require('../../application/reports/createHalfReport.uc');
 
 class ReportController {
   /**
@@ -48,6 +49,18 @@ class ReportController {
       return ReportResponse.statsSuccess(res, stats);
     } catch (error) {
       return ReportResponse.handleError(res, error, 'Failed to fetch report statistics');
+    }
+  }
+
+  static async createHalfReport(req, res) {
+    try {
+      const { form } = req.body;
+      console.log(form)
+      const result = await createHalfReportUC({form});
+      console.log(result)
+      return ReportResponse.success(res, result.data, 'Half report created successfully');
+    } catch (error) {
+      return ReportResponse.handleError(res, error, 'Failed to create half report');
     }
   }
 

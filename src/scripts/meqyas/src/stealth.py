@@ -1,6 +1,3 @@
-
-# stealth.py
-# Robust shim + JS fallback stealth for Playwright.
 from .utils import log
 
 _JS_FALLBACK = r"""

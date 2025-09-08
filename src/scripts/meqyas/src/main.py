@@ -1,6 +1,4 @@
-# main.py
 import asyncio
-import getpass
 import sys
 from datetime import datetime, timezone
 
