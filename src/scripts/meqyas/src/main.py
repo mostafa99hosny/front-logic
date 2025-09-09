@@ -1,8 +1,9 @@
-# main.py
+
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
 import asyncio
 import getpass
 from datetime import datetime, timezone
-import sys
 
 from .browser import launch_browser
 from .auth import login
@@ -59,6 +60,5 @@ def main():
     password = sys.argv[2]
     query = sys.argv[3]
     asyncio.run(flow(username, password, query))
-
 if __name__ == "__main__":
     main()
