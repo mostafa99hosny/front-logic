@@ -30,6 +30,14 @@ async def add_assets_to_report(page, report_id):
         await page.get(asset_url)
         await asyncio.sleep(1)
 
+        not_found = await page.find("This page does not exist!", timeout=3)
+
+        if not_found:
+            print("⚠️ Report does not exist.")
+        else:
+            print("✅ Report exists.")
+
+
         # 3️⃣ Handle assets step (reuse form_steps[1] for asset fields)
         if len(assets) > 10:
             result = await handle_macros(page, record)
