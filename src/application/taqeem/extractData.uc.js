@@ -96,7 +96,6 @@ async function extractData(filePath, pdfPaths) {
 
     console.log("records", records);
 
-    // PDF lookup
     const pdfLookup = {};
     pdfPaths.forEach(pdfPath => {
       pdfLookup[path.basename(pdfPath)] = path.resolve(pdfPath);
@@ -104,7 +103,6 @@ async function extractData(filePath, pdfPaths) {
 
     console.log("pdfLookup", pdfLookup);
 
-    // Batch ID here
     const batchId = uuidv4();
 
     const enriched = records.map(record => {
