@@ -273,7 +273,7 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False, re
 
                 error_div = await wait_for_element(page, "div[class='alert alert-danger']", timeout=5)
                 if error_div:
-                    if retries < max_retries:
+                    if retries <= max_retries:
                         await asyncio.sleep(1)
                         return await fill_form(page, record, field_map, field_types, is_last_step, retries + 1, max_retries)
                     else:
@@ -512,6 +512,8 @@ async def runFormFill(page, record_id):
                 "message": "All macros filled successfully",
                 "recordId": str(record["_id"])
             })
+
+        return {"status": "SUCCESS", "results": results}
 
 
 
