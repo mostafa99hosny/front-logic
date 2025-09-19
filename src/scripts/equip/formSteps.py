@@ -65,7 +65,6 @@ field_types_3 = {
     "asset_name": "text",
     "asset_usage_id": "select",
     "value_base": "select",
-    "inspection_date": "text",
     "final_value": "text",
     "production_capacity": "text",
     "production_capacity_measuring_unit": "text",
@@ -76,10 +75,12 @@ field_types_3 = {
     "market_approach_value": "text",
     "cost_approach": "select",
     "cost_approach_value": "text",
-
+    
     "country": "location",
     "region": "location",
     "city": "location",
+
+    "inspection_date": "date",
 }
 
 form_steps = [

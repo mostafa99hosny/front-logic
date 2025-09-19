@@ -12,6 +12,7 @@ const valuerSchema = new mongoose.Schema({
 });
 
 const halfReportSchema = new mongoose.Schema({
+  report_id: { type: String },
   report_title: { type: String, required: true },
   valuation_purpose: { type: String },
   value_premise: { type: String },

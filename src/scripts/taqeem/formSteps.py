@@ -44,7 +44,6 @@ field_map_2 = {
     "assetType": "[name='asset_type_id']",
     "inspectionDate": "[name='inspected_at']",
     "finalValue": "[name='value']",
-    "assetUsageSector": "[name='asset_usage_id']",
     "marketApproach": "[id='approach1']",
     "comparableTransactionsMethod": "[name='approach[1][method][1][value]']",
     "incomeApproach": "[id='approach2']",
@@ -56,13 +55,13 @@ field_map_2 = {
     "city": "[name='city_id'] + .select2-container .select2-selection",
     "longitude": "[name='longitude']",
     "latitude": "[name='latitude']",
+    "assetUsageSector": "[name='asset_usage_id']",
 }
 
 field_types_2 = {
-    "assetType": "select",
+    "assetType": "dynamic_select",
     "inspectionDate": "text",
     "finalValue": "text",
-    "assetUsageSector": "select",
     "marketApproach": "select",
     "comparableTransactionsMethod": "text",
     "incomeApproach": "select",
@@ -74,6 +73,7 @@ field_types_2 = {
     "city": "location",
     "longitude": "text",
     "latitude": "text",
+    "assetUsageSector": "dynamic_select",
 }
 
 field_map_3 = {
