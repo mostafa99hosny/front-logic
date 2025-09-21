@@ -1,16 +1,19 @@
 import asyncio, sys, json, traceback
-
 from login import startLogin, submitOtp
 from browser import closeBrowser, get_browser
 from formFiller import runFormFill
 from addAssets import add_assets_to_report   
 
+# --- Helpers ---
 async def _readline(loop):
     return await loop.run_in_executor(None, sys.stdin.readline)
 
+# --- Worker ---
 async def worker():
     loop = asyncio.get_running_loop()
     browser = await get_browser()
+
+    # Start on login page (first tab)
     page = await browser.get(
         "https://sso.taqeem.gov.sa/realms/REL_TAQEEM/protocol/openid-connect/auth"
         "?client_id=cli-qima-valuers&redirect_uri=https%3A%2F%2Fqima.taqeem.sa%2Fkeycloak%2Flogin%2Fcallback"
@@ -39,10 +42,11 @@ async def worker():
                 result = await submitOtp(page, cmd.get("otp", ""))
 
             elif action == "formFill":
-                result = await runFormFill(page, cmd.get("reportId", ""))
+                result = await runFormFill(browser, cmd.get("reportId", ""))
 
-            elif action == "addAssets":   
-                result = await add_assets_to_report(page, cmd.get("reportId", ""))
+            elif action == "addAssets":
+                # same here, let add_assets manage its own tab(s)
+                result = await add_assets_to_report(browser, cmd.get("reportId", ""))
 
             elif action == "close":
                 await closeBrowser()
@@ -57,6 +61,8 @@ async def worker():
             tb = traceback.format_exc()
             print(json.dumps({"status": "FAILED", "error": str(e), "traceback": tb}), flush=True)
             await closeBrowser()
+            break
+
 
 if __name__ == "__main__":
     asyncio.run(worker())

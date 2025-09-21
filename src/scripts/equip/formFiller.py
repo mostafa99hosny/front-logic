@@ -1,17 +1,37 @@
 import asyncio
 import time
 import traceback
+import json
+import time
+
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from formSteps import form_steps, macro_form_config
 
+MONGO_URI="mongodb+srv://test:JUL3OvyCSLVjSixj@assetval.pu3bqyr.mongodb.net/projectForever"
+client = AsyncIOMotorClient(MONGO_URI)
+db = client["projectForever"]
 
-async def select_select2_option_simple(page, selector, value):
+async def wait_for_element(page, selector, timeout=30, check_interval=0.5):
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            element = await page.query_selector(selector)
+            if element:
+                return element
+        except Exception:
+            pass
+        await asyncio.sleep(check_interval)
+    return None
+
+async def handle_location(page, selector, value):
     try:
+        await page.bring_to_front()
+        await asyncio.sleep(0.1)
         print(f"Selecting Select2 option: {value}")
         element = await page.find(selector)
-
+        
         if not element:
             print(f"No Select2 element found for {selector}")
             return False
@@ -32,8 +52,8 @@ async def select_select2_option_simple(page, selector, value):
         await search_input.focus()
         await search_input.clear_input()
         await asyncio.sleep(0.1)
-
         await search_input.send_keys(value)
+
         await search_input.apply("""
         (el) => {
             const evt = new KeyboardEvent('keydown', {
@@ -50,471 +70,350 @@ async def select_select2_option_simple(page, selector, value):
         """)
 
         await asyncio.sleep(1)
-
         print(f"Successfully selected: {value}")
         return True
-
+        
     except Exception as e:
         print(f"Select2 selection failed: {e}")
         return False
 
 
-async def wait_for_element(page, selector, timeout=30, check_interval=0.5):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            element = await page.query_selector(selector)
-            if element:
-                return element
-        except Exception:
-            pass
-        await asyncio.sleep(check_interval)
-    return None
 
+from datetime import datetime
+
+async def bulk_inject_inputs(page, record, field_map, field_types):
+    selects = {}
+    others = {}
+
+    for key, selector in field_map.items():
+        if key not in record:
+            continue
+        field_type = field_types.get(key, "text")
+        value = str(record[key] or "")
+
+        # Convert date strings to YYYY-MM-DD
+        if field_type == "date" and value:
+            try:
+                value = datetime.strptime(value, "%d-%m-%Y").strftime("%Y-%m-%d")
+            except ValueError:
+                print(f"[WARNING] Invalid date format for {key}: {value}")
+                continue
+
+        if field_type == "select":
+            selects[selector] = {"type": "select", "value": value}
+        elif field_type in ["text", "checkbox", "date"]:
+            others[selector] = {"type": field_type, "value": value}
+
+    async def inject(jsdata):
+        if not jsdata:
+            return
+        data_json = json.dumps(jsdata)
+        js = f"""
+        (function() {{
+            const data = {data_json};
+            for (const [selector, meta] of Object.entries(data)) {{
+                const el = document.querySelector(selector);
+                if (!el) continue;
+                switch(meta.type) {{
+                    case "checkbox":
+                        el.checked = meta.value;
+                        el.dispatchEvent(new Event("change", {{ bubbles: true }}));
+                        break;
+                    case "select":
+                        let matched = false;
+                        for (const option of el.options) {{
+                            if (option.value == meta.value || option.text == meta.value) {{
+                                el.value = option.value;
+                                matched = true;
+                                break;
+                            }}
+                        }}
+                        if (!matched && el.options.length) el.selectedIndex = 0;
+                        el.dispatchEvent(new Event("change", {{ bubbles: true }}));
+                        break;
+                    case "date":
+                    case "text":
+                    default:
+                        el.value = meta.value;
+                        el.dispatchEvent(new Event("input", {{ bubbles: true }}));
+                        el.dispatchEvent(new Event("change", {{ bubbles: true }}));
+                        break;
+                }}
+            }}
+            return true;
+        }})();
+        """
+        await page.evaluate(js)
+
+    await inject(selects)
+    await inject(others)
+
+
+# --------------------- Special Fields ---------------------
 async def fill_clients(page, clients):
     if not clients:
         return
-
-    client = clients[0]  # Only take the first one
-
-    name_selector = "[name='client[0][name]']"
-    tel_selector = "[name='client[0][telephone]']"
-    email_selector = "[name='client[0][email]']"
-
-    for selector, value in [
-        (name_selector, client.get("client_name", "")),
-        (tel_selector, client.get("telephone_number", "")),
-        (email_selector, client.get("email_address", "")),
-    ]:
-        el = await wait_for_element(page, selector, timeout=5)
+    client = clients[0]
+    selectors = {
+        "[name='client[0][name]']": client.get("client_name", ""),
+        "[name='client[0][telephone]']": client.get("telephone_number", ""),
+        "[name='client[0][email]']": client.get("email_address", ""),
+    }
+    for sel, val in selectors.items():
+        el = await wait_for_element(page, sel, timeout=5)
         if el:
             await el.clear_input()
             await asyncio.sleep(0.05)
-            await el.send_keys(value)
-        else:
-            print(f"⚠️ Could not find element for selector {selector}")
+            await el.send_keys(val)
 
 async def fill_valuers(page, valuers):
-    count = len(valuers)
-    if count > 1:
-        for _ in range(count - 1):
+    if len(valuers) > 1:
+        for _ in range(len(valuers)-1):
             add_btn = await wait_for_element(page, "#duplicateValuer", timeout=5)
             if add_btn:
                 await add_btn.click()
                 await asyncio.sleep(0.5)
-
-    # Now fill the data
     for idx, valuer in enumerate(valuers):
-        name_selector = f"[name='valuer[{idx}][id]']"
-        contrib_selector = f"[name='valuer[{idx}][contribution]']"
-
-        # Handle plain select dropdowns
-        for selector, value in [
-            (name_selector, valuer.get("valuer_name", "")),
-            (contrib_selector, str(valuer.get("contribution_percentage", "")))
-        ]:
-            select_element = await wait_for_element(page, selector, timeout=10)
+        name_sel = f"[name='valuer[{idx}][id]']"
+        contrib_sel = f"[name='valuer[{idx}][contribution]']"
+        for sel, val in [(name_sel, valuer.get("valuer_name","")), (contrib_sel, str(valuer.get("contribution_percentage","")))]:
+            select_element = await wait_for_element(page, sel, timeout=10)
             if not select_element:
-                print(f"Warning: No select element found for selector {selector}")
                 continue
-
             options = select_element.children
-            option_found = False
-
-            for option in options:
-                option_text = option.text or ""
-                if option_text.lower() == value.lower():
-                    await option.select_option()
-                    option_found = True
+            for opt in options:
+                text = (opt.text or "").strip()
+                if val.lower() in text.lower():
+                    await opt.select_option()
                     break
 
-            if not option_found:
-                for option in options:
-                    option_text = (option.text or "").strip()
-                    if value.lower() in option_text.lower():
-                        await option.select_option()
-                        option_found = True
-                        print(f"Warning: Approx match used for '{value}'")
-                        break
-
-
-async def fill_report_users(page, report_users):
-    if not report_users:
+async def fill_report_users(page, users):
+    if not users:
         return
-
-    count = len(report_users)
-
-    # If multiple report users, add extra rows
-    if count > 1:
-        for _ in range(count - 1):
+    if len(users) > 1:
+        for _ in range(len(users)-1):
             add_btn = await wait_for_element(page, "#duplicateUser", timeout=5)
             if add_btn:
                 await add_btn.click()
                 await asyncio.sleep(0.5)
-
-    # Now fill the names
-    for idx, name in enumerate(report_users):
-        selector = f"[name='user[{idx}][name]']"
-        el = await wait_for_element(page, selector, timeout=5)
+    for idx, name in enumerate(users):
+        sel = f"[name='user[{idx}][name]']"
+        el = await wait_for_element(page, sel, timeout=5)
         if el:
             await el.clear_input()
             await asyncio.sleep(0.05)
             await el.send_keys(name)
-            print(f"✅ Filled report user {idx+1}: {name}")
-        else:
-            print(f"⚠️ Could not find input for report user {idx+1}")
-
-
-
 
 async def fill_form(page, record, field_map, field_types, is_last_step=False, retries=0, max_retries=2, skip_special_fields=False):
-    if not skip_special_fields:
-        if "clients" in record and record["clients"]:
-            await fill_clients(page, record["clients"])
-
-        if "valuers" in record and record["valuers"]:
-            await fill_valuers(page, record["valuers"])
-
-        if "report_users" in record and record["report_users"]:
-            await fill_report_users(page, record["report_users"])
-
-    # 🔹 Handle normal fields
-    for key, selector in field_map.items():
-        if key not in record:
-            continue
-
-        value = str(record[key] or "")
-        field_type = field_types.get(key, "text")
-
-        try:
-            if field_type == "text":
-                element = await wait_for_element(page, selector, timeout=10)
-                if element:
-                    await element.apply("(el) => el.removeAttribute('readonly')")
-                    await element.clear_input()
-                    await asyncio.sleep(0.1)
-                    await element.send_keys(value)
-
-            elif field_type == "location":
-                success = await select_select2_option_simple(page, selector, value)
-                if not success:
-                    print(f"Failed to select location '{value}'")
-
-            elif field_type == "select":
-                select_element = await wait_for_element(page, selector, timeout=10)
-                if not select_element:
-                    print(f"Warning: No select element found for selector {selector}")
-                    continue
-
-                options = select_element.children
-                option_found = False
-
-                for option in options:
-                    option_text = option.text or ""
-                    if option_text.lower() == value.lower():
-                        await option.select_option()
-                        option_found = True
-                        break
-
-                if not option_found:
-                    for option in options:
-                        option_text = (option.text or "").strip()
-                        if value.lower() in option_text.lower():
-                            await option.select_option()
-                            option_found = True
-                            print(f"Warning: Approx match used for '{value}'")
-                            break
-
-            elif field_type == "radio":
-                elements = await page.query_selector_all(selector)
-                if elements:
-                    for element in elements:
-                        parent = element.parent
-                        if parent:
-                            sibling = await parent.query_selector("label")
-                            if sibling:
-                                labelText = sibling.text
-                                if labelText and value.lower() in labelText.lower():
-                                    await element.click()
-                                    print(f"Selected radio by label text: {value}")
-                                    break
-
-            elif field_type == "file":
-                file_input = await wait_for_element(page, selector, timeout=10)
-                if file_input:
-                    try:
-                        await file_input.send_file(value)
-                        print("File uploaded")
-                    except Exception as e:
-                        print(f"send_files failed: {e}")
-                else:
-                    print(f"Warning: No file input found for selector {selector}")
-
-            elif field_type == "checkbox":
-                checkbox = await wait_for_element(page, selector, timeout=5)
-                if not checkbox:
-                    print(f"⚠️ No checkbox found for selector {selector}")
-                else:
-                    if value: 
-                        await checkbox.click()
-                        print("✅ Checkbox checked")
-
-        except Exception as e:
-            print(f"Error filling {key}: {e}")
-            continue
-
     try:
+        start_time = time.time()
+
+        if not skip_special_fields:
+            if "clients" in record: await fill_clients(page, record["clients"])
+            if "valuers" in record: await fill_valuers(page, record["valuers"])
+            if "report_users" in record: await fill_report_users(page, record["report_users"])
+        await bulk_inject_inputs(page, record, field_map, field_types)
+
+        for key, selector in field_map.items():
+            if key not in record: continue
+            value = str(record[key] or "")
+            ftype = field_types.get(key,"text")
+            try:
+                if ftype == "location":
+                    await handle_location(page, selector, value)
+
+                elif ftype == "file":
+                    file_input = await wait_for_element(page, selector, timeout=10)
+                    if file_input: await file_input.send_file(value)
+                elif ftype == "dynamic_select":
+                    select_element = await wait_for_element(page, selector, timeout=10)
+                    if select_element:
+                        for opt in select_element.children:
+                            if value.lower() in (opt.text or "").lower():
+                                await opt.select_option()
+                                break
+            except Exception:
+                continue
+        
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"[FORM] filled in {elapsed_time:.2f} seconds")
+
         if not is_last_step:
             continue_btn = await wait_for_element(page, "input[name='continue']", timeout=10)
             if continue_btn:
-                await asyncio.sleep(0.5)
                 await continue_btn.click()
                 await asyncio.sleep(2)
-
-                error_div = await wait_for_element(page, "div[class='alert alert-danger']", timeout=5)
-                if error_div:
-                    if retries < max_retries:
-                        await asyncio.sleep(1)
-                        return await fill_form(page, record, field_map, field_types, is_last_step, retries + 1, max_retries)
-                    else:
-                        return {"status": "FAILED", "error": "Validation error found"}
-
-                return True
-            else:
-                print("No continue button found")
-                return False
+                error_div = await wait_for_element(page, "div.alert.alert-danger", timeout=5)
+                if error_div and retries < max_retries:
+                    await asyncio.sleep(1)
+                    return await fill_form(page, record, field_map, field_types, is_last_step, retries+1, max_retries)
         else:
             save_btn = await wait_for_element(page, "input[type='submit']", timeout=10)
             if save_btn:
-                await asyncio.sleep(0.5) 
-
+                await asyncio.sleep(0.5)
                 await save_btn.click()
                 await asyncio.sleep(2)
-
-                return {"status": "SAVED"}
+                return {"status":"SAVED"}
             else:
-                return {"status": "FAILED", "error": "Save button not found"}
-
+                return {"status":"FAILED","error":"Save button not found"}
+        return True
     except Exception as e:
-        print(f"Error clicking button: {e}")
-        return {"status": "FAILED", "error": str(e)}
-
-
-
-MONGO_URI = "mongodb+srv://uzairrather3147:Uzair123@cluster0.h7vvr.mongodb.net/mekyas"
-client = AsyncIOMotorClient(MONGO_URI)
-db = client["mekyas"]
-
+        return {"status":"FAILED","error": str(e)}
 
 def chunk_macros(macros, chunk_size=10):
     for i in range(0, len(macros), chunk_size):
-        yield macros[i:i + chunk_size]
-
+        yield macros[i:i+chunk_size]
 
 async def handle_macros(page, record):
     macros = record.get("asset_data", [])
-    if not macros:
-        return True
-
-    macro_batches = list(chunk_macros(macros, 10))
-    total_batches = len(macro_batches)
-
-    for idx, batch in enumerate(macro_batches, start=1):
-        print(f"🔹 Filling batch {idx}/{total_batches} with {len(batch)} macros")
-
-        # Shallow copy with only this batch
+    if not macros: return True
+    batches = list(chunk_macros(macros, 10))
+    for idx, batch in enumerate(batches, start=1):
         temp_record = record.copy()
         temp_record["asset_data"] = batch
         temp_record["number_of_macros"] = str(len(batch))
-
-        # Force submit each batch
         result = await fill_form(
             page,
             temp_record,
-            form_steps[1]["field_map"],   # step 2 = asset step
+            form_steps[1]["field_map"],
             form_steps[1]["field_types"],
-            is_last_step=True,            # click submit
+            is_last_step=True,
             skip_special_fields=True
         )
-
-        # Check if save failed
-        if isinstance(result, dict) and result.get("status") == "FAILED":
+        if isinstance(result, dict) and result.get("status")=="FAILED":
             return result
-
-        # Always extract formId from URL after submit
-        url = await page.evaluate("window.location.href")
-        formId = url.rstrip("/").split("/")[-1]
-        print(f"✅ Batch {idx} saved. formId={formId}")
-
-        # If not last batch → reopen asset form
-        if idx < total_batches:
-            if not formId:
-                return {"status": "FAILED", "error": "Could not determine formId after save"}
+        # Navigate to add next batch if any
+        if idx < len(batches):
+            formId = (await page.evaluate("window.location.href")).rstrip("/").split("/")[-1]
             next_url = f"https://qima.taqeem.sa/report/asset/create/{formId}"
-            print(f"➡️ Navigating to {next_url} for next batch")
             await page.get(next_url)
             await asyncio.sleep(1)
-
     return True
 
+# --------------------- Macro Editing ---------------------
 async def get_first_macro_id(page):
-    # Wait for the table body to appear
     tbody = await wait_for_element(page, "tbody", timeout=10)
-    if not tbody:
-        raise Exception("Could not find table body")
-
-    # Get all 'td' elements inside the tbody
-    trs = await tbody.query_selector_all("tr")
-    if not trs:
-        raise Exception("No <tr> found in table body")
-    
-    # Take the first tr
-    first_tr = trs[0]
-    
-    # Get all 'td' elements inside the first tr 
-
-    tds = await first_tr.query_selector_all("td")
-    if not tds:
-        raise Exception("No <td> found in table body")
-
-    # Take the first td
-    first_td = tds[0]
-
-    # Get the <a> inside the first td
-    link = await first_td.query_selector("a")
-    if not link:
-        raise Exception("No <a> found inside first td")
-
-    # Extract macro ID from the text of the <a>
-    text = link.text
-    macro_id = int(text.strip())
-
-    return macro_id
-
-
+    trs = await tbody.query_selector_all("tr") if tbody else []
+    first_tr = trs[0] if trs else None
+    tds = await first_tr.query_selector_all("td") if first_tr else []
+    link = await tds[0].query_selector("a") if tds else None
+    return int(link.text.strip()) if link else None
 
 async def fill_macro_form(page, macro_id, macro_data, field_map, field_types):
-    edit_url = f"https://qima.taqeem.sa/report/macro/{macro_id}/edit"
-    await page.get(edit_url)
-    await asyncio.sleep(1)
+    await page.get(f"https://qima.taqeem.sa/report/macro/{macro_id}/edit")
+    await asyncio.sleep(0.5)
+    try:
+        result = await fill_form(page, macro_data, field_map, field_types, is_last_step=True, skip_special_fields=True)
+        return result
+    except Exception as e:
+        print(f"Filling macro {macro_id} failed: {e}")
+        return {"status": "FAILED", "error": str(e)}
 
-    result = await fill_form(
-        page,
-        macro_data,
-        field_map,
-        field_types,
-        is_last_step=True,
-        skip_special_fields=True
-    )
-    return result
-
-
-async def handle_macro_edits(page, record):
+async def handle_macro_edits(browser, record, tabs_num=3):
     asset_data = record.get("asset_data", [])
-    if not asset_data:
-        print("No asset_data to fill")
-        return True
+    if not asset_data: return True
 
-    first_macro_id = await get_first_macro_id(page)
-    print(f"🔹 Starting from macro_id={first_macro_id}")
+    main_page = browser.tabs[0]
+    first_macro_id = await get_first_macro_id(main_page)
+    if first_macro_id is None:
+        return {"status":"FAILED","error":"Could not determine first macro id"}
 
-    for idx, macro in enumerate(asset_data):
-        macro_id = first_macro_id + idx
-        print(f"➡️ Filling macro {idx+1}/{len(asset_data)} (id={macro_id})")
-        result = await fill_macro_form(page, macro_id, macro,
-                                       macro_form_config["field_map"],
-                                       macro_form_config["field_types"])
-        if isinstance(result, dict) and result.get("status") == "FAILED":
-            return result
-        print(f"✅ Saved macro {macro_id}")
+    chunks = list(chunk_macros(asset_data, len(asset_data)//tabs_num + 1))
+    pages = [main_page] + [await browser.get("", new_tab=True) for _ in range(tabs_num - 1)]
 
+    async def process_chunk(chunk, page, offset):
+        for idx, macro in enumerate(chunk):
+            macro_id = first_macro_id + idx + offset
+            element_index = offset + idx
+
+            try:
+                # Update by array index (no need to match asset_data.id)
+                res = await db.halfreports.update_one(
+                    {"_id": record["_id"]},
+                    {"$set": {f"asset_data.{element_index}.id": int(macro_id)}}
+                )
+                print(f"[DB PATCH] index {element_index} -> macro_id {macro_id} (matched={res.matched_count}, modified={res.modified_count})")
+                if res.modified_count == 0:
+                    # debug: print the array length and current element values
+                    doc = await db.halfreports.find_one({"_id": record["_id"]})
+                    ad = doc.get("asset_data", [])
+                    print(f"[DB PATCH WARNING] no modification. asset_data length={len(ad)}. element at index:",
+                        ad[element_index] if element_index < len(ad) else "INDEX OUT OF RANGE")
+            except Exception as e:
+                print(f"[DB PATCH ERROR] {e}")
+            try:
+                await fill_macro_form(
+                    page,
+                    macro_id,
+                    macro,
+                    macro_form_config["field_map"],
+                    macro_form_config["field_types"]
+                )
+            except Exception as e:
+                print(f"Filling macro {macro_id} failed: {e}")
+
+
+    tasks = [process_chunk(chunk, page, sum(len(c) for c in chunks[:i])) for i, (page, chunk) in enumerate(zip(pages, chunks))]
+    await asyncio.gather(*tasks)
     return True
 
-async def runFormFill(page, record_id):
+async def runFormFill(browser, record_id):
     try:
         if not ObjectId.is_valid(record_id):
-            return {"status": "FAILED", "error": f"Invalid record_id: {record_id}"}
-
+            return {"status":"FAILED","error":"Invalid record_id"}
         record = await db.halfreports.find_one({"_id": ObjectId(record_id)})
-        if not record:
-            return {"status": "FAILED", "error": f"No record found for recordId={record_id}"}
+        if not record: return {"status":"FAILED","error":"Record not found"}
 
-        results = []
-        record["number_of_macros"] = str(len(record.get("asset_data", [])))
+        results=[]
+        record["number_of_macros"] = str(len(record.get("asset_data",[])))
 
-        if "clients" in record and record["clients"]:
-            await fill_clients(page, record["clients"])
-        if "valuers" in record and record["valuers"]:
-            await fill_valuers(page, record["valuers"])
+        main_page = await browser.get("https://qima.taqeem.sa/report/create/4/487")
+
+        if "clients" in record: await fill_clients(main_page, record["clients"])
+        if "valuers" in record: await fill_valuers(main_page, record["valuers"])
 
         for step_num, step_config in enumerate(form_steps, 1):
-            is_last_step = (step_num == len(form_steps))
-            results.append({
-                "status": "STEP_STARTED",
-                "step": step_num,
-                "recordId": str(record["_id"])
-            })
+            is_last = step_num == len(form_steps)
+            results.append({"status":"STEP_STARTED","step":step_num,"recordId":str(record["_id"])})
 
-            # Special handling for step 2 (assets/macros)
-            if step_num == 2 and len(record.get("asset_data", [])) > 10:
-                result = await handle_macros(page, record)
+            if step_num==2 and len(record.get("asset_data",[]))>10:
+                result = await handle_macros(main_page, record)
             else:
-                result = await fill_form(
-                    page,
-                    record,
-                    step_config["field_map"],
-                    step_config["field_types"],
-                    is_last_step,
-                    skip_special_fields=True
-                )
+                result = await fill_form(main_page, record, step_config["field_map"], step_config["field_types"], is_last, skip_special_fields=True)
 
-            if isinstance(result, dict) and result.get("status") == "FAILED":
-                results.append({
-                    "status": "FAILED",
-                    "step": step_num,
-                    "recordId": str(record["_id"]),
-                    "error": result.get("error")
-                })
-                return {"status": "FAILED", "results": results}
+            if isinstance(result, dict) and result.get("status")=="FAILED":
+                results.append({"status":"FAILED","step":step_num,"recordId":str(record["_id"]),"error":result.get("error")})
+                return {"status":"FAILED","results":results}
 
-            if is_last_step:
-                results.append({
-                    "status": "FORM_FILL_SUCCESS",
-                    "message": "Form submitted successfully",
-                    "recordId": str(record["_id"])
-                })
-        if result is not None and not (isinstance(result, dict) and result.get("status") == "FAILED"):
-            # ✅ Only run if the 2-step wizard succeeded
-            translate = await wait_for_element(page, "a[href='https://qima.taqeem.sa/setlocale/ar']", timeout=30)
-            if not translate:
-                results.append({
-                    "status": "FAILED",
-                    "step": "translate",
-                    "recordId": str(record["_id"]),
-                    "error": "Translate link not found"
-                })
-                return {"status": "FAILED", "results": results}
-            await translate.click()
-            await asyncio.sleep(1)
+            if is_last:
+                translate = await wait_for_element(main_page, "a[href='https://qima.taqeem.sa/setlocale/ar']", timeout=30)
+                if not translate:
+                    results.append({"status":"FAILED","step":"translate","recordId":str(record["_id"]),"error":"Translate link not found"})
+                    return {"status":"FAILED","results":results}
+                await translate.click()
+                await asyncio.sleep(1)
 
-            macro_result = await handle_macro_edits(page, record)
-            if isinstance(macro_result, dict) and macro_result.get("status") == "FAILED":
-                results.append({
-                    "status": "FAILED",
-                    "step": "macro_edit",
-                    "recordId": str(record["_id"]),
-                    "error": macro_result.get("error")
-                })
-                return {"status": "FAILED", "results": results}
+                main_url = await main_page.evaluate("window.location.href")
+                form_id = main_url.split("/")[-1]
+                if not form_id:
+                    results.append({"status":"FAILED","step":"report_id","recordId":str(record["_id"]),"error":"Could not determine report_id"})
 
-            results.append({
-                "status": "MACRO_EDIT_SUCCESS",
-                "message": "All macros filled successfully",
-                "recordId": str(record["_id"])
-            })
+                res = await db.halfreports.update_one({"_id": record["_id"]}, {"$set": {"report_id": form_id}})
+                if res.modified_count == 0:
+                    results.append({"status":"FAILED","step":"report_id","recordId":str(record["_id"]),"error":"Could not set report_id"})
+                    return {"status":"FAILED","results":results}
+                print(f"[DB PATCH] report_id set: {form_id}")
 
+                macro_result = await handle_macro_edits(browser, record, tabs_num=3)
+                if isinstance(macro_result, dict) and macro_result.get("status")=="FAILED":
+                    results.append({"status":"FAILED","step":"macro_edit","recordId":str(record["_id"]),"error":macro_result.get("error")})
+                    return {"status":"FAILED","results":results}
 
+                results.append({"status":"MACRO_EDIT_SUCCESS","message":"All macros filled","recordId":str(record["_id"])})
+
+        return {"status":"SUCCESS","results":results}
 
     except Exception as e:
         tb = traceback.format_exc()
-        return {"status": "FAILED", "error": str(e), "traceback": tb}
+        return {"status":"FAILED","error":str(e),"traceback":tb}
