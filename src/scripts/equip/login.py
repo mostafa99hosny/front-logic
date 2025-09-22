@@ -4,7 +4,8 @@ from navigation import post_login_navigation
 
 async def startLogin(page, email, password):
     try:
-        email_input = await wait_for_element(page, "#username, input[type='email']", 30)
+        await page.save_screenshot()
+        email_input = await wait_for_element(page, "#username", 30)
         if not email_input:
             await closeBrowser()
             return {"status": "FAILED", "error": "Email input not found", "recoverable": False}
@@ -40,7 +41,6 @@ async def startLogin(page, email, password):
     except Exception as e:
         await closeBrowser()
         return {"status": "FAILED", "error": str(e), "recoverable": False}
-
 
 async def submitOtp(page, otp):
     if not page:

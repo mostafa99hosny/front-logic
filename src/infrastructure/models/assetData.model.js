@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const assetDataSchema = new mongoose.Schema({
     report_id: { type: String },
+    user_id: { type: String },
     id: { type: String },
     serial_no: { type: String },
     asset_type: { type: String },
@@ -9,7 +10,7 @@ const assetDataSchema = new mongoose.Schema({
     model: { type: String },
     year_made: { type: String },
     final_value: { type: String },
-    asset_usage_id: { type: String }, // Changed from asset_usage to match Excel
+    asset_usage_id: { type: String }, 
     value_base: { type: String },
     inspection_date: { type: String },
     production_capacity: { type: String },

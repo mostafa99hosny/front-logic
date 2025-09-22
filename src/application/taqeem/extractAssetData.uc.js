@@ -4,7 +4,7 @@ const ExcelJS = require("exceljs/dist/es5");
 const HalfReport = require("../../infrastructure/models/halfReport.model");
 const AssetData = require("../../infrastructure/models/assetData.model");
 
-async function extractAssetData(excelFilePath, pdfFilePath = null, baseData, { mode = "halfReport", reportId = null } = {}) {
+async function extractAssetData(excelFilePath, pdfFilePath = null, baseData, { mode = "halfReport", reportId = null, userId } = {}) {
   console.log("[extractAssetData] starting with", { excelFilePath, pdfFilePath, mode, reportId });
   
   let parsedBaseData = {};
@@ -22,6 +22,7 @@ async function extractAssetData(excelFilePath, pdfFilePath = null, baseData, { m
   try {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(excelFilePath);
+    
     const worksheet = workbook.worksheets[0];
     if (!worksheet) {
       throw new Error("No worksheet found in Excel file");
@@ -109,6 +110,7 @@ async function extractAssetData(excelFilePath, pdfFilePath = null, baseData, { m
       const docs = assetRecords.map((rec) => ({
         ...rec,
         report_id: reportId,
+        user_id: userId,
       }));
       saved = await AssetData.insertMany(docs);
     }

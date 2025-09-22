@@ -276,25 +276,29 @@ async def get_macro_pages_num(browser, report_id):
 
     return page_no
 
-async def get_macros_from_page(browser, index):
-    l = []
+async def get_macros_from_page(page):
+    urls = []
 
-    while not len(next_button := await browser.tabs[index].select_all(".paginate_button.next")):
-        await browser.tabs[index].sleep(1)
+    # Wait for the next button to appear (or pagination to be rendered)
+    while not (next_buttons := await page.select_all(".paginate_button.next")):
+        await asyncio.sleep(1)
 
-    html_content = await browser.tabs[index].get_content()
-    await browser.tabs[index].sleep(1)
-    l.extend(re.findall("(https://qima.taqeem.sa/report/macro/\\d+/edit)", html_content))
+    # Scrape current page for macro edit URLs
+    html_content = await page.get_content()
+    await asyncio.sleep(1)
+    urls.extend(re.findall(r"(https://qima\.taqeem\.sa/report/macro/\d+/edit)", html_content))
 
-    if "disabled" not in await next_button[0].get_html():
-        await next_button[0].click()
-        await browser.tabs[index].sleep(1)
+    # If next button exists and is not disabled, click and scrape next page
+    if "disabled" not in await next_buttons[0].get_html():
+        await next_buttons[0].click()
+        await asyncio.sleep(1)
 
-        html_content = await browser.tabs[index].get_content()
-        await browser.tabs[index].sleep(1)
-        l.extend(re.findall("(https://qima.taqeem.sa/report/macro/\\d+/edit)", html_content))
-    
-    return l
+        html_content = await page.get_content()
+        await asyncio.sleep(1)
+        urls.extend(re.findall(r"(https://qima\.taqeem\.sa/report/macro/\d+/edit)", html_content))
+
+    return urls
+
 
 async def get_macros(browser, report_id, assets_data,browsers_num):
     is_there_no_id_macro = False
@@ -1912,6 +1916,7 @@ async def check_incomplete_assets(report_id, browsers_num):
     return {"macro_count": macro_count, "micro_count": micro_count, "both_count": both_count}
 
 async def proceed_to_next_page(browser, index, selector, asyncfunc=None):
+
     for attempt in range(5):
         # AscendingRetry(attempt + 1):  # Removed undefined reference
         try:
@@ -1940,6 +1945,7 @@ async def proceed_to_next_page(browser, index, selector, asyncfunc=None):
             await browser.tabs[index].reload()
             await asyncio.sleep(2)
     raise Exception("Failed to proceed to next page after 5 attempts")
+
 async def resubmit_assets(report_id, browsers_num=6):  # Reduced to 6 to lower resource usage
     global account_data
 

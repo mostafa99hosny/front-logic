@@ -2,6 +2,7 @@ const { spawn } = require("child_process");
 const path = require("path");
 const AppError = require("../../shared/utils/appError");
 const extractAssetData = require("../../application/taqeem/extractAssetData.uc.js");
+const { getAssetsByUserIdUC } = require("../../application/reports/getAssetsByUserId.uc.js");
 
 let pyWorker = null;
 let stdoutBuffer = "";
@@ -147,27 +148,50 @@ const fillHalfReportForm = async (req, res, next) => {
   }
 };
 
-const addAssetsToReport = async (req, res, next) => {
+const extractExistingReportData = async (req, res, next) => {
   const { reportId } = req.body;
+  const userId  = req.user.userId;
   const excelFilePath = req.files?.excel?.[0]?.path;
 
   try {
     if (!excelFilePath) return res.status(400).json({ success: false, message: "Excel file is required" });
 
-    const result = await extractAssetData(excelFilePath, null, null, { mode: "assetData", reportId });
+    const result = await extractAssetData(excelFilePath, null, null, { mode: "assetData", reportId, userId });
     if (result.status !== "SUCCESS") return res.status(400).json({ success: false, message: result.error });
-
-    const responses = await sendCommand({ action: "addAssets", reportId });
 
     res.json({
       success: true,
       status: "SAVED",
       data: result.data,
-      automation: responses[responses.length - 1],
       message: "Assets added to report.",
     });
+
   }catch (err) {
     console.error("[addAssetsToReport] error:", err);
+    next(err instanceof AppError ? err : new AppError(String(err), 500));
+  }
+}
+
+const addAssetsToReport = async (req, res, next) => {
+  const { reportId } = req.body;
+
+  try {
+    const responses = await sendCommand({ action: "addAssets", reportId });
+    res.json(responses || { status: "UNKNOWN_RESPONSE" });
+
+  }catch (err) {
+    console.error("[addAssetsToReport] error:", err);
+    next(err instanceof AppError ? err : new AppError(String(err), 500));
+  }
+};
+
+const getAssetsByUserId = async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const assets = await getAssetsByUserIdUC(userId);
+    res.status(200).json(assets);
+  } catch (err) {
+    console.error("[getAssetsByUserId] error:", err);
     next(err instanceof AppError ? err : new AppError(String(err), 500));
   }
 };
@@ -175,6 +199,8 @@ const addAssetsToReport = async (req, res, next) => {
 module.exports = {
   loginOrOtp,
   fillHalfReportForm,
+  extractExistingReportData,
+  getAssetsByUserId,
   addAssetsToReport,
   sendCommand,
   closeWorker,

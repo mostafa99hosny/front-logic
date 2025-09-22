@@ -4,6 +4,7 @@ from browser import closeBrowser, get_browser
 from formFiller import runFormFill
 from addAssets import add_assets_to_report   
 
+
 # --- Helpers ---
 async def _readline(loop):
     return await loop.run_in_executor(None, sys.stdin.readline)
