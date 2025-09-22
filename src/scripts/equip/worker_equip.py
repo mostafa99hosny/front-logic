@@ -5,21 +5,12 @@ from formFiller import runFormFill
 from addAssets import add_assets_to_report   
 
 
-# --- Helpers ---
 async def _readline(loop):
     return await loop.run_in_executor(None, sys.stdin.readline)
 
-# --- Worker ---
+
 async def worker():
     loop = asyncio.get_running_loop()
-    browser = await get_browser()
-
-    # Start on login page (first tab)
-    page = await browser.get(
-        "https://sso.taqeem.gov.sa/realms/REL_TAQEEM/protocol/openid-connect/auth"
-        "?client_id=cli-qima-valuers&redirect_uri=https%3A%2F%2Fqima.taqeem.sa%2Fkeycloak%2Flogin%2Fcallback"
-        "&scope=openid&response_type=code"
-    )
 
     while True:
         line = await _readline(loop)
@@ -37,16 +28,26 @@ async def worker():
             action = cmd.get("action")
 
             if action == "login":
+                # always start a new browser for login
+                browser = await get_browser(force_new=True)
+                page = await browser.get(
+                    "https://sso.taqeem.gov.sa/realms/REL_TAQEEM/protocol/openid-connect/auth"
+                    "?client_id=cli-qima-valuers&redirect_uri=https%3A%2F%2Fqima.taqeem.sa%2Fkeycloak%2Flogin%2Fcallback"
+                    "&scope=openid&response_type=code"
+                )
                 result = await startLogin(page, cmd.get("email", ""), cmd.get("password", ""))
 
             elif action == "otp":
+                browser = await get_browser()
+                page = browser.main_tab
                 result = await submitOtp(page, cmd.get("otp", ""))
 
             elif action == "formFill":
+                browser = await get_browser()
                 result = await runFormFill(browser, cmd.get("reportId", ""))
 
             elif action == "addAssets":
-                # same here, let add_assets manage its own tab(s)
+                browser = await get_browser()
                 result = await add_assets_to_report(browser, cmd.get("reportId", ""))
 
             elif action == "close":
