@@ -311,14 +311,6 @@ async def fill_macro_form(page, macro_id, macro_data, field_map, field_types):
         return {"status": "FAILED", "error": str(e)}
     
 async def fill_assets_via_macro_urls(browser, record, macro_urls, tabs_num=3):
-    """
-    Fill macro forms for a record using a list of pre-existing macro URLs.
-    
-    :param browser: Browser object
-    :param record: dict containing `_id` and `asset_data`
-    :param macro_urls: List of macro edit URLs corresponding to assets
-    :param tabs_num: Number of concurrent tabs to use
-    """
     asset_data = record.get("asset_data", [])
     if not asset_data or not macro_urls:
         return {"status": "FAILED", "error": "No assets or macro URLs provided"}
@@ -338,20 +330,24 @@ async def fill_assets_via_macro_urls(browser, record, macro_urls, tabs_num=3):
 
     async def process_chunk(chunk, page, offset):
         for idx, url in enumerate(chunk):
+            if asset_data[offset + idx].get("submitState") == 1:
+                continue
+            
             element_index = offset + idx
             try:
-                # Navigate page to the macro URL
                 await page.get(url)
-                await asyncio.sleep(0.5)  # small delay for page load
+                await asyncio.sleep(0.5)  
 
-                # Update MongoDB asset_data with macro URL (or macro ID from URL)
                 macro_id = int(url.rstrip("/").split("/")[-2])
-                await db.halfreports.update_one(
-                    {"_id": record["_id"]},
-                    {"$set": {f"asset_data.{element_index}.id": macro_id}}
+                print("macro_id", macro_id)
+
+                asset_id = asset_data[element_index]["_id"]
+                
+                await db.assetdatas.update_one(
+                    {"_id": asset_id},
+                    {"$set": {"id": macro_id}},
                 )
 
-                # Fill the macro form using your existing fill_macro_form logic
                 await fill_macro_form(
                     page,
                     macro_id,
@@ -367,7 +363,6 @@ async def fill_assets_via_macro_urls(browser, record, macro_urls, tabs_num=3):
     tasks = [process_chunk(chunk, page, sum(len(c) for c in chunks[:i])) for i, (page, chunk) in enumerate(zip(pages, chunks))]
     await asyncio.gather(*tasks)
 
-    # Close extra tabs
     for p in pages[1:]:
         await p.close()
 

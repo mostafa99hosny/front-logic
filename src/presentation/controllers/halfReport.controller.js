@@ -185,6 +185,18 @@ const addAssetsToReport = async (req, res, next) => {
   }
 };
 
+const checkAssets = async (req, res, next) => {
+  const { reportId } = req.body;
+  try {
+    const responses = await sendCommand({ action: "check", reportId });
+    res.json(responses || { status: "UNKNOWN_RESPONSE" });
+
+  }catch (err) {
+    console.error("[checkAssets] error:", err);
+    next(err instanceof AppError ? err : new AppError(String(err), 500));
+  }
+};
+
 const getAssetsByUserId = async (req, res, next) => {
   try {
     const userId = req.user.userId;
@@ -202,6 +214,7 @@ module.exports = {
   extractExistingReportData,
   getAssetsByUserId,
   addAssetsToReport,
+  checkAssets,
   sendCommand,
   closeWorker,
 };

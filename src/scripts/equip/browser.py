@@ -19,10 +19,6 @@ async def wait_for_element(page, selector, timeout=30, check_interval=1):
         await asyncio.sleep(check_interval)
     return None
 
-
-# -----------------------------
-# Browser management
-# -----------------------------
 async def get_browser(force_new=False):
     global browser
 

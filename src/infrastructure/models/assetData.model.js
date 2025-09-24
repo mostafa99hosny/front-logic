@@ -4,6 +4,7 @@ const assetDataSchema = new mongoose.Schema({
     report_id: { type: String },
     user_id: { type: String },
     id: { type: String },
+    submitState: {type: Number, default: 0},
     serial_no: { type: String },
     asset_type: { type: String },
     asset_name: { type: String },

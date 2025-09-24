@@ -72,16 +72,11 @@ async def get_macros_from_page(page):
     return urls
 
 async def get_macros(browser, report_id, assets_data, browsers_num=5):
-    """
-    Fetch macro edit URLs for all assets in a report.
-    If assets already have a valid 'id', return URLs directly.
-    Otherwise scrape the report pages to discover the macro edit links.
-    """
-    # 1️⃣ Use asset IDs directly if available (non-empty string only)
+
     assets_data_url = [
         f'https://qima.taqeem.sa/report/macro/{d["id"]}/edit'
         for d in assets_data
-        if d.get("id") and str(d["id"]).strip()  # must exist and not be empty
+        if d.get("id") and str(d["id"]).strip()  
     ]
     if assets_data_url:
         return assets_data_url
