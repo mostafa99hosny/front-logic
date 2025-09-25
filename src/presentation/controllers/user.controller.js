@@ -1,6 +1,7 @@
 const User = require('../../infrastructure/models/user.model');
 const createUserUseCase = require('../../application/users/createUser.uc');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
 class UserController {
   // Register new user
@@ -106,12 +107,24 @@ class UserController {
           message: 'User not found'
         });
       }
-
+      // Debug: طباعة بيانات المستخدم قبل الإرسال
+      console.log('USER PROFILE DATA:', user);
+      // تحويل المستخدم إلى كائن عادي وإزالة كلمة المرور فقط
+      const userObj = user.toObject();
+      delete userObj.password;
+      // إضافة القيم الافتراضية للحقول إذا كانت غير موجودة
+      userObj.firstName = userObj.firstName || "";
+      userObj.lastName = userObj.lastName || "";
+      userObj.email = userObj.email || "";
+      userObj.phone = userObj.phone || "";
+      userObj.companyName = userObj.companyName || "";
+      userObj.companyType = userObj.companyType || "";
+      userObj.licenseNumber = userObj.licenseNumber || "";
+      userObj.city = userObj.city || "";
       res.json({
         success: true,
-        user
+        user: userObj
       });
-
     } catch (error) {
       console.error('Get profile error:', error);
       res.status(500).json({
@@ -140,6 +153,43 @@ class UserController {
 
     } catch (error) {
       console.error('Verify token error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error'
+      });
+    }
+  }
+   // Update profile
+  async updateProfile(req, res) {
+    try {
+      const updates = { ...req.body };
+
+      // If password provided, hash it
+      if (updates.password) {
+        const salt = await bcrypt.genSalt(10);
+        updates.password = await bcrypt.hash(updates.password, salt);
+      }
+
+      const user = await User.findByIdAndUpdate(req.user.userId, updates, {
+        new: true,
+        runValidators: true
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Profile updated successfully',
+        user
+      });
+
+    } catch (error) {
+      console.error('Update profile error:', error);
       res.status(500).json({
         success: false,
         message: 'Internal server error'
