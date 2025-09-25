@@ -219,7 +219,6 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False, re
                     country_code = get_country_code(record.get("country",""))
                     region_code = get_region_code(record.get("region",""))
                     city_code = get_city_code(record.get("city",""))
-
                     await set_location(page, country_code, region_code, city_code)
 
                 elif ftype == "file":

@@ -24,7 +24,9 @@ const assetDataSchema = new mongoose.Schema({
     cost_approach_value: { type: String },
     country: { type: String },
     region: { type: String },
-    city: { type: String }
+    city: { type: String },
+    created_at: { type: Date, default: Date.now },
+    updated_at: { type: Date, default: Date.now },
 });
 
 const AssetData = mongoose.model('AssetData', assetDataSchema);

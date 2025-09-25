@@ -25,16 +25,16 @@ async def check_incomplete_macros(browser, report_id, browsers_num=3):
 
         async def fetch_macros_from_page(page_no):
             page = await browser.get(f"https://qima.taqeem.sa/report/{report_id}?page={page_no}")
+            await asyncio.sleep(0.5)
             page_macros = await get_macros_from_page(page)
             macros_urls.extend(page_macros)
 
         tasks = [fetch_macros_from_page(page_no) for page_no in range(1, pages_num + 1)]
         await asyncio.gather(*tasks)
-        macros_urls = list(set(macros_urls))  # Remove duplicates
+        macros_urls = list(set(macros_urls)) 
 
         incomplete_count = 0
 
-        # Check each macro
         for url in macros_urls:
             macro_id = url.rstrip("/").split("/")[-2].strip()
             print("Macro ID to check:", macro_id)
@@ -61,6 +61,7 @@ async def check_incomplete_macros(browser, report_id, browsers_num=3):
 
     except Exception as e:
         tb = traceback.format_exc()
+        print("traceback:", tb)
         return {"status": "FAILED", "error": str(e), "traceback": tb}
 
 
@@ -93,7 +94,6 @@ async def add_assets_to_report(browser, report_id, browsers_num=5):
         if isinstance(macro_result, dict) and macro_result.get("status") == "FAILED":
             return macro_result
 
-        # Run incomplete macro check
         check_result = await check_incomplete_macros(browser, report_id, browsers_num=3)
         if check_result.get("status") == "FAILED":
             print("⚠️ Warning: Failed to check incomplete macros:", check_result.get("error"))

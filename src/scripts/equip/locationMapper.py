@@ -19,3 +19,5 @@ def get_region_code(region):
 def get_city_code(city):
     return city_codes.get(city.strip(), "")
 
+
+        
