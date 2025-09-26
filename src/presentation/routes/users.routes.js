@@ -10,6 +10,7 @@ userRoutes.post('/auth/login', userController.login);
 
 // Protected routes
 userRoutes.get('/profile', authMiddleware, userController.getProfile);
+userRoutes.put('/profile', authMiddleware, userController.updateProfile);
 userRoutes.get('/verify', authMiddleware, userController.verifyToken);
 
 module.exports = userRoutes;

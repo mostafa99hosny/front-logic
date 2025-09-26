@@ -3,11 +3,13 @@ import time
 import traceback
 import json
 import time
+from datetime import datetime
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from formSteps import form_steps, macro_form_config
+from locationMapper import get_country_code, get_region_code, get_city_code
 
 MONGO_URI="mongodb+srv://test:JUL3OvyCSLVjSixj@assetval.pu3bqyr.mongodb.net/projectForever"
 client = AsyncIOMotorClient(MONGO_URI)
@@ -25,61 +27,55 @@ async def wait_for_element(page, selector, timeout=30, check_interval=0.5):
         await asyncio.sleep(check_interval)
     return None
 
-async def handle_location(page, selector, value):
+import json
+import asyncio
+
+import asyncio
+
+import asyncio
+import json
+
+import asyncio
+import json
+
+async def set_location(page, country_code, region_code, city_code):
     try:
-        await page.bring_to_front()
-        await asyncio.sleep(0.1)
-        print(f"Selecting Select2 option: {value}")
-        element = await page.find(selector)
-        
-        if not element:
-            print(f"No Select2 element found for {selector}")
-            return False
+        async def set_field(selector, value):
+            args = json.dumps({"selector": selector, "value": value})
+            await page.evaluate(f"""
+                (function() {{
+                    const args = {args};
+                    const el = document.querySelector(args.selector);
+                    if (!el) return;
+                    if (el.value !== args.value) {{
+                        el.value = args.value;
+                        el.dispatchEvent(new Event("input", {{ bubbles: true }}));
+                        el.dispatchEvent(new Event("change", {{ bubbles: true }}));
+                    }}
+                }})();
+            """)
 
-        await element.apply("""
-        (el) => {
-            const evt = new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window });
-            el.dispatchEvent(evt);
-        }
-        """)
+        await set_field("#country_id", country_code)
         await asyncio.sleep(1)
 
-        search_input = await wait_for_element(page, "input.select2-search__field", timeout=5)
-        if not search_input:
-            print("No search input found")
-            return False
+        await set_field("#region", region_code)
+        await asyncio.sleep(1) 
 
-        await search_input.focus()
-        await search_input.clear_input()
-        await asyncio.sleep(0.1)
-        await search_input.send_keys(value)
+        await set_field("#city", city_code)
+        await asyncio.sleep(1) 
 
-        await search_input.apply("""
-        (el) => {
-            const evt = new KeyboardEvent('keydown', {
-                key: 'Enter',
-                code: 'Enter',
-                keyCode: 13,
-                which: 13,
-                bubbles: true,
-                cancelable: true,
-                view: window
-            });
-            el.dispatchEvent(evt);
-        }
-        """)
-
-        await asyncio.sleep(1)
-        print(f"Successfully selected: {value}")
+        print(f"Location set → {country_code} / {region_code} / {city_code}")
         return True
-        
+
     except Exception as e:
-        print(f"Select2 selection failed: {e}")
+        print(f"Location injection failed: {e}")
         return False
 
 
+    except Exception as e:
+        print(f"Location injection failed: {e}")
+        return False
 
-from datetime import datetime
 
 async def bulk_inject_inputs(page, record, field_map, field_types):
     selects = {}
@@ -220,7 +216,10 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False, re
             ftype = field_types.get(key,"text")
             try:
                 if ftype == "location":
-                    await handle_location(page, selector, value)
+                    country_code = get_country_code(record.get("country",""))
+                    region_code = get_region_code(record.get("region",""))
+                    city_code = get_city_code(record.get("city",""))
+                    await set_location(page, country_code, region_code, city_code)
 
                 elif ftype == "file":
                     file_input = await wait_for_element(page, selector, timeout=10)
@@ -309,10 +308,69 @@ async def fill_macro_form(page, macro_id, macro_data, field_map, field_types):
     except Exception as e:
         print(f"Filling macro {macro_id} failed: {e}")
         return {"status": "FAILED", "error": str(e)}
+    
+async def fill_assets_via_macro_urls(browser, record, macro_urls, tabs_num=3):
+    asset_data = record.get("asset_data", [])
+    if not asset_data or not macro_urls:
+        return {"status": "FAILED", "error": "No assets or macro URLs provided"}
+
+    # Use first tab as main
+    main_page = await browser.get(macro_urls[0])
+    
+    # Prepare tabs
+    pages = [main_page] + [await browser.get("about:blank", new_tab=True) for _ in range(min(tabs_num-1, len(macro_urls)-1))]
+
+    # Split macro_urls into chunks per tab
+    def chunk_list(lst, n):
+        for i in range(0, len(lst), n):
+            yield lst[i:i+n]
+    
+    chunks = list(chunk_list(macro_urls, len(macro_urls)//len(pages) + 1))
+
+    async def process_chunk(chunk, page, offset):
+        for idx, url in enumerate(chunk):
+            if asset_data[offset + idx].get("submitState") == 1:
+                continue
+            
+            element_index = offset + idx
+            try:
+                await page.get(url)
+                await asyncio.sleep(0.5)  
+
+                macro_id = int(url.rstrip("/").split("/")[-2])
+                print("macro_id", macro_id)
+
+                asset_id = asset_data[element_index]["_id"]
+                
+                await db.assetdatas.update_one(
+                    {"_id": asset_id},
+                    {"$set": {"id": macro_id}},
+                )
+
+                await fill_macro_form(
+                    page,
+                    macro_id,
+                    asset_data[element_index],
+                    macro_form_config["field_map"],
+                    macro_form_config["field_types"]
+                )
+                print(f"[FILLED] asset index {element_index} -> macro_id {macro_id}")
+
+            except Exception as e:
+                print(f"[ERROR] Filling macro {url} failed: {e}")
+
+    tasks = [process_chunk(chunk, page, sum(len(c) for c in chunks[:i])) for i, (page, chunk) in enumerate(zip(pages, chunks))]
+    await asyncio.gather(*tasks)
+
+    for p in pages[1:]:
+        await p.close()
+
+    return {"status": "SUCCESS", "message": f"Filled {len(asset_data)} macros using provided URLs"}
 
 async def handle_macro_edits(browser, record, tabs_num=3):
     asset_data = record.get("asset_data", [])
     if not asset_data: return True
+
 
     main_page = browser.tabs[0]
     first_macro_id = await get_first_macro_id(main_page)
