@@ -4,9 +4,14 @@ const ExcelJS = require("exceljs/dist/es5");
 const HalfReport = require("../../infrastructure/models/halfReport.model");
 const AssetData = require("../../infrastructure/models/assetData.model");
 
+const {
+  checkMissingColumns,
+  validateAll,
+} = require("./validator");
+
 async function extractAssetData(excelFilePath, pdfFilePath = null, baseData, { mode = "halfReport", reportId = null, userId } = {}) {
   console.log("[extractAssetData] starting with", { excelFilePath, pdfFilePath, mode, reportId });
-  
+
   let parsedBaseData = {};
   if (baseData) {
     try {
@@ -22,20 +27,14 @@ async function extractAssetData(excelFilePath, pdfFilePath = null, baseData, { m
   try {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(excelFilePath);
-    
     const worksheet = workbook.worksheets[0];
-    if (!worksheet) {
-      throw new Error("No worksheet found in Excel file");
-    }
+    if (!worksheet) throw new Error("No worksheet found in Excel file");
 
     let headerRowNumber = 1;
     let headers = [];
-    let foundCorrectHeaders = false;
-
     for (let rowNum = 1; rowNum <= Math.min(10, worksheet.rowCount); rowNum++) {
       const row = worksheet.getRow(rowNum);
       const potentialHeaders = [];
-
       row.eachCell({ includeEmpty: false }, (cell) => {
         potentialHeaders.push(String(cell.value).trim().toLowerCase());
       });
@@ -48,54 +47,86 @@ async function extractAssetData(excelFilePath, pdfFilePath = null, baseData, { m
       if (foundCount >= 3) {
         headers = potentialHeaders;
         headerRowNumber = rowNum;
-        foundCorrectHeaders = true;
-        console.log(`✅ Found headers at row ${rowNum}:`, headers);
         break;
       }
     }
 
-    if (!foundCorrectHeaders) {
-      const headerRow = worksheet.getRow(1);
-      headers = [];
-      headerRow.eachCell({ includeEmpty: false }, (cell) => {
-        headers.push(String(cell.value).trim().toLowerCase());
-      });
-      console.warn("⚠️ Could not find expected headers, using row 1:", headers);
+    if (headers.length === 0) {
+      headers = worksheet.getRow(1).values.slice(1).map(h => String(h).trim().toLowerCase());
+      console.warn("⚠️ Could not auto-detect headers, falling back to row 1:", headers);
     }
 
-    const assetRecords = [];
+    const rows = [];
     for (let rowNumber = headerRowNumber + 1; rowNumber <= worksheet.rowCount; rowNumber++) {
       const row = worksheet.getRow(rowNumber);
       if (row.actualCellCount === 0) continue;
 
-      const record = {};
-      let isEmptyRow = true;
-
-      headers.forEach((header, idx) => {
+      const values = headers.map((header, idx) => {
         const cell = row.getCell(idx + 1);
-        let value = "";
-
         if (cell.value && typeof cell.value === "object" && cell.value.result !== undefined) {
-          value = String(cell.value.result);
+          return String(cell.value.result);
         } else if (cell.value && typeof cell.value === "object" && cell.value.formula) {
-          value = String(cell.value.result || cell.value);
-        } else {
-          value = cell.value !== null && cell.value !== undefined ? String(cell.value) : "";
+          return String(cell.value.result || cell.value);
         }
-
-        record[header] = value;
-        if (value) isEmptyRow = false;
+        return cell.value !== null && cell.value !== undefined ? String(cell.value) : "";
       });
 
-      if (!isEmptyRow) {
-        assetRecords.push(record);
-      }
+      if (values.some(v => v !== "")) rows.push(values);
     }
 
-    console.log(`✅ Parsed ${assetRecords.length} assets`);
+    console.log(`✅ Parsed ${rows.length} data rows`);
+
+    // --- VALIDATION ---
+    // --- VALIDATION ---
+    const missing = checkMissingColumns(headers);
+    if (missing.length) {
+      console.error("❌ Missing required columns:", missing);
+      return {
+        status: "FAILED",
+        error: "Missing required columns",
+        details: missing
+      };
+    }
+
+    const { rows: validatedRows, highlights, summary } = validateAll(rows, headers);
+
+    // Collect detailed error logs
+    const errorDetails = [];
+    Object.keys(highlights).forEach(key => {
+      const [rowIdx, col] = key.split(",");
+      const header = col; // already column name
+      const cellValue = validatedRows[rowIdx][headers.indexOf(header)];
+      errorDetails.push({
+        row: parseInt(rowIdx) + 2, // +2 because headerRowNumber + 1 is first data row
+        column: header,
+        value: cellValue
+      });
+    });
+
+    const hasErrors = summary.some(msg => msg.startsWith("❌"));
+    if (hasErrors) {
+      console.error("❌ Validation errors found:");
+      errorDetails.forEach(err => {
+        console.error(
+          `Row ${err.row}, Column "${err.column}": Problematic value -> ${JSON.stringify(err.value)}`
+        );
+      });
+
+      return {
+        status: "FAILED",
+        error: "Validation failed",
+        highlights
+      };
+    }
+
+
+    const assetRecords = validatedRows.map(r => {
+      const rec = {};
+      headers.forEach((h, i) => rec[h] = r[i]);
+      return rec;
+    });
 
     let saved;
-
     if (mode === "halfReport") {
       const halfReportDoc = new HalfReport({
         ...parsedBaseData,
@@ -106,7 +137,6 @@ async function extractAssetData(excelFilePath, pdfFilePath = null, baseData, { m
 
     } else if (mode === "assetData") {
       if (!reportId) throw new Error("reportId required for assetData mode");
-
       const docs = assetRecords.map((rec) => ({
         ...rec,
         report_id: reportId,
@@ -115,20 +145,14 @@ async function extractAssetData(excelFilePath, pdfFilePath = null, baseData, { m
       saved = await AssetData.insertMany(docs);
     }
 
-    try {
-      if (fs.existsSync(excelFilePath)) {
-        fs.unlinkSync(excelFilePath);
-      }
-    } catch (delErr) {
-      return { status: "SUCCESS", data: saved, warning: `Cleanup error: ${delErr.message}` };
-    }
-
-    return { status: "SUCCESS", data: saved };
+    try { if (fs.existsSync(excelFilePath)) fs.unlinkSync(excelFilePath); } catch { }
+    return { status: "SUCCESS", data: saved, summary };
 
   } catch (err) {
     console.error("[extractAssetData] error", err);
     return { status: "FAILED", error: err.message };
   }
 }
+
 
 module.exports = extractAssetData;

@@ -76,7 +76,7 @@ function sendCommand(cmdObj) {
 
     const responseHandler = (data) => {
       responses.push(data);
-      const finalStatuses = ["FORM_FILL_SUCCESS","FAILED","FATAL","CLOSED","SUCCESS","OTP_REQUIRED","LOGIN_SUCCESS"];
+      const finalStatuses = ["FORM_FILL_SUCCESS", "FAILED", "FATAL", "CLOSED", "SUCCESS", "OTP_REQUIRED", "LOGIN_SUCCESS"];
       if (finalStatuses.includes(data.status) && !isComplete) {
         isComplete = true;
         const index = pending.findIndex((req) => req.handler === responseHandler);
@@ -150,14 +150,19 @@ const fillHalfReportForm = async (req, res, next) => {
 
 const extractExistingReportData = async (req, res, next) => {
   const { reportId } = req.body;
-  const userId  = req.user.userId;
+  const userId = req.user.userId;
   const excelFilePath = req.files?.excel?.[0]?.path;
 
   try {
     if (!excelFilePath) return res.status(400).json({ success: false, message: "Excel file is required" });
 
     const result = await extractAssetData(excelFilePath, null, null, { mode: "assetData", reportId, userId });
-    if (result.status !== "SUCCESS") return res.status(400).json({ success: false, message: result.error });
+    if (result.status !== "SUCCESS") return res.status(400).json({
+      success: false,
+      message: result.error,
+      summary: result.summary,
+      highlights: result.highlights
+    });
 
     res.json({
       success: true,
@@ -166,7 +171,7 @@ const extractExistingReportData = async (req, res, next) => {
       message: "Assets added to report.",
     });
 
-  }catch (err) {
+  } catch (err) {
     console.error("[addAssetsToReport] error:", err);
     next(err instanceof AppError ? err : new AppError(String(err), 500));
   }
@@ -179,7 +184,7 @@ const addAssetsToReport = async (req, res, next) => {
     const responses = await sendCommand({ action: "addAssets", reportId });
     res.json(responses || { status: "UNKNOWN_RESPONSE" });
 
-  }catch (err) {
+  } catch (err) {
     console.error("[addAssetsToReport] error:", err);
     next(err instanceof AppError ? err : new AppError(String(err), 500));
   }
@@ -191,7 +196,7 @@ const checkAssets = async (req, res, next) => {
     const responses = await sendCommand({ action: "check", reportId });
     res.json(responses || { status: "UNKNOWN_RESPONSE" });
 
-  }catch (err) {
+  } catch (err) {
     console.error("[checkAssets] error:", err);
     next(err instanceof AppError ? err : new AppError(String(err), 500));
   }
