@@ -3,7 +3,15 @@ const upload = require('../../shared/middlewares/upload');
 
 const { runTaqeemScript, retryTaqeemScript } = require('../controllers/script.controller');
 const { runMeqyasScript, runMultipleMeqyasScript } = require('../controllers/meqyas.controller');
-const { loginOrOtp, fillHalfReportForm, addAssetsToReport, extractExistingReportData, getAssetsByUserId, checkAssets } = require('../controllers/halfReport.controller'); 
+const { 
+  loginOrOtp, 
+  fillHalfReportForm, 
+  addAssetsToReport, 
+  extractExistingReportData, 
+  getAssetsByUserId, 
+  checkAssets,
+  reportDataExtraction
+ } = require('../controllers/halfReport.controller'); 
 const authMiddleware = require('../../shared/middlewares/auth.middleware');
 
 const scriptRouter = express.Router();
@@ -47,6 +55,15 @@ scriptRouter.post(
     { name: 'pdfs', maxCount: 0 }
   ]),
   extractExistingReportData
+);
+
+scriptRouter.post(
+  '/equip/reportDataExtract',
+  upload.fields([
+    { name: 'excel', maxCount: 1 },
+    { name: 'pdfs', maxCount: 1 }
+  ]),
+  reportDataExtraction
 );
 
 scriptRouter.post('/equip/addAssets', addAssetsToReport);

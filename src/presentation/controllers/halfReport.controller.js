@@ -2,6 +2,7 @@ const { spawn } = require("child_process");
 const path = require("path");
 const AppError = require("../../shared/utils/appError");
 const extractAssetData = require("../../application/taqeem/extractAssetData.uc.js");
+const reportDataExtract = require("../../application/taqeem/reportDataExtract.uc.js");
 const { getAssetsByUserIdUC } = require("../../application/reports/getAssetsByUserId.uc.js");
 
 let pyWorker = null;
@@ -148,6 +149,28 @@ const fillHalfReportForm = async (req, res, next) => {
   }
 };
 
+const reportDataExtraction = async (req, res, next) => {
+  const excelFilePath = req.files?.excel?.[0]?.path;
+  const pdfFilePaths  = req.files?.pdfs?.[0]?.path;
+  try {
+    const result = await reportDataExtract(excelFilePath, pdfFilePaths);
+    if (result.status !== "SUCCESS") return res.status(400).json({
+      success: false,
+      message: result.message
+    });
+
+    res.json({
+      success: true,
+      status: "SAVED",
+      data: result.data,
+      message: "Report saved.",
+    });
+  } catch (err) {
+    console.error("[reportDataExtract] error:", err);
+    next(err instanceof AppError ? err : new AppError(String(err), 500));
+  }
+};
+
 const extractExistingReportData = async (req, res, next) => {
   const { reportId } = req.body;
   const userId = req.user.userId;
@@ -216,6 +239,7 @@ const getAssetsByUserId = async (req, res, next) => {
 module.exports = {
   loginOrOtp,
   fillHalfReportForm,
+  reportDataExtraction,
   extractExistingReportData,
   getAssetsByUserId,
   addAssetsToReport,

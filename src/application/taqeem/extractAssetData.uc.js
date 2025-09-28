@@ -76,8 +76,6 @@ async function extractAssetData(excelFilePath, pdfFilePath = null, baseData, { m
 
     console.log(`✅ Parsed ${rows.length} data rows`);
 
-    // --- VALIDATION ---
-    // --- VALIDATION ---
     const missing = checkMissingColumns(headers);
     if (missing.length) {
       console.error("❌ Missing required columns:", missing);
