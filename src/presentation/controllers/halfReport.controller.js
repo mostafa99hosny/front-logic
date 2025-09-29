@@ -4,6 +4,7 @@ const AppError = require("../../shared/utils/appError");
 const extractAssetData = require("../../application/taqeem/extractAssetData.uc.js");
 const reportDataExtract = require("../../application/taqeem/reportDataExtract.uc.js");
 const { getAssetsByUserIdUC } = require("../../application/reports/getAssetsByUserId.uc.js");
+const {getHalfReportsByUserIdUC} = require("../../application/reports/getHalfReportsByUserId.uc.js");
 
 let pyWorker = null;
 let stdoutBuffer = "";
@@ -148,12 +149,26 @@ const fillHalfReportForm = async (req, res, next) => {
     next(err instanceof AppError ? err : new AppError(String(err), 500));
   }
 };
+const fillReportForm2 = async (req, res, next) => {
+  const { id } = req.body;
+  let tabsNum = parseInt(req.body.tabsNum, 10);
+  if (isNaN(tabsNum) || tabsNum < 1) tabsNum = 3; 
+
+  try {
+    const response = await sendCommand({ action: "formFill2", reportId: id, tabsNum });
+    res.json(response);
+  } catch (err) {
+    console.error("[fillReportForm2] error:", err);
+    next(err instanceof AppError ? err : new AppError(String(err), 500));
+  }
+};
 
 const reportDataExtraction = async (req, res, next) => {
   const excelFilePath = req.files?.excel?.[0]?.path;
   const pdfFilePaths  = req.files?.pdfs?.[0]?.path;
+  const userId = req.user.userId;
   try {
-    const result = await reportDataExtract(excelFilePath, pdfFilePaths);
+    const result = await reportDataExtract(excelFilePath, pdfFilePaths, userId);
     if (result.status !== "SUCCESS") return res.status(400).json({
       success: false,
       message: result.message
@@ -236,11 +251,24 @@ const getAssetsByUserId = async (req, res, next) => {
   }
 };
 
+const getHalfReportsByUserId = async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const reports = await getHalfReportsByUserIdUC(userId);
+    res.status(200).json(reports);
+  } catch (err) {
+    console.error("[getHalfReportsByUserId] error:", err);
+    next(err instanceof AppError ? err : new AppError(String(err), 500));
+  }
+};
+
 module.exports = {
   loginOrOtp,
   fillHalfReportForm,
+  fillReportForm2,
   reportDataExtraction,
   extractExistingReportData,
+  getHalfReportsByUserId,
   getAssetsByUserId,
   addAssetsToReport,
   checkAssets,

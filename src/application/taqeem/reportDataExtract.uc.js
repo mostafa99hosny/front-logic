@@ -3,7 +3,7 @@ const ExcelJS = require('exceljs/dist/es5');
 
 const HalfReport = require('../../infrastructure/models/halfReport.model');
 
-const reportDataExtract = async (excelFilePath, pdfFilePaths = null) => {
+const reportDataExtract = async (excelFilePath, pdfFilePaths = null, userId) => {
     try {
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.readFile(excelFilePath);
@@ -21,12 +21,10 @@ const reportDataExtract = async (excelFilePath, pdfFilePaths = null) => {
 
             if (value === null || value === undefined) return '';
 
-            // Handle formula cells
             if (typeof value === 'object' && value.hasOwnProperty('formula')) {
                 return getCellValue({ value: value.result });
             }
 
-            // Handle dates
             if (value instanceof Date) {
                 const yyyy = value.getFullYear();
                 const mm = String(value.getMonth() + 1).padStart(2, '0'); // months are 0-indexed
@@ -102,6 +100,7 @@ const reportDataExtract = async (excelFilePath, pdfFilePaths = null) => {
 
         const halfReportDoc = new HalfReport({
             ...baseData,
+            user_id: userId,
             report_asset_file: pdfFilePaths || null,
             asset_data: allAssets
         });

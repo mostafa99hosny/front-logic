@@ -3,13 +3,9 @@ import asyncio
 
 async def post_login_navigation(page):
     try:
-        await page.get("https://qima.taqeem.sa/report/create/4/487")
-        await asyncio.sleep(1)
-
-        translate = await wait_for_element(page, "a[href='https://qima.taqeem.sa/setlocale/en']", timeout=5)
+        translate = await wait_for_element(page, "a[href='https://qima.taqeem.sa/setlocale/en']", timeout=10)
         if not translate:
             return {"status": "FAILED", "error": "Translate link not found"}
-        await translate.click()
 
         return {"status": "SUCCESS"}
 

@@ -1,9 +1,4 @@
-// front-logic/src/application/reports/report.response.js
-
 class ReportResponse {
-  /**
-   * Success response for multiple reports with pagination
-   */
   static successWithPagination(res, data) {
     return res.status(200).json({
       success: true,
@@ -15,10 +10,6 @@ class ReportResponse {
       }
     });
   }
-
-  /**
-   * Success response for single report
-   */
   static success(res, data, message = 'Operation completed successfully') {
     return res.status(200).json({
       success: true,
@@ -26,10 +17,6 @@ class ReportResponse {
       data
     });
   }
-
-  /**
-   * Success response for search results
-   */
   static searchSuccess(res, data, searchTerm = null) {
     return res.status(200).json({
       success: true,
@@ -42,9 +29,6 @@ class ReportResponse {
     });
   }
 
-  /**
-   * Success response for statistics
-   */
   static statsSuccess(res, stats) {
     return res.status(200).json({
       success: true,

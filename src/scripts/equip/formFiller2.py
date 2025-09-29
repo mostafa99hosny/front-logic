@@ -8,8 +8,8 @@ from datetime import datetime
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from formSteps import form_steps, macro_form_config
-from locationMapper import get_country_code, get_region_code, get_city_code
+from formSteps2 import form_steps, macro_form_config
+# from locationMapper import get_country_code, get_region_code, get_city_code
 
 MONGO_URI="mongodb+srv://test:JUL3OvyCSLVjSixj@assetval.pu3bqyr.mongodb.net/projectForever"
 client = AsyncIOMotorClient(MONGO_URI)
@@ -38,33 +38,63 @@ import json
 import asyncio
 import json
 
-async def set_location(page, country_code, region_code, city_code):
+# Global cache dictionary
+_location_cache = {}
+
+async def set_location(page, country_name, region_name, city_name):
     try:
+        cache_key = f"{country_name}|{region_name}|{city_name}"
+
+        async def get_location_code(name, selector):
+            if not name:
+                return None
+            el = await wait_for_element(page, selector, timeout=5)
+            if not el:
+                return None
+            for opt in el.children:
+                text = (opt.text or "").strip()
+                if name.lower() in text.lower():
+                    return opt.attrs.get("value")
+            return None
+
         async def set_field(selector, value):
             args = json.dumps({"selector": selector, "value": value})
             await page.evaluate(f"""
                 (function() {{
                     const args = {args};
-                    const el = document.querySelector(args.selector);
-                    if (!el) return;
-                    if (el.value !== args.value) {{
-                        el.value = args.value;
-                        el.dispatchEvent(new Event("input", {{ bubbles: true }}));
-                        el.dispatchEvent(new Event("change", {{ bubbles: true }}));
+                    if (window.$) {{
+                        // Use Select2/jQuery API if available
+                        window.$(args.selector).val(args.value).trigger("change");
+                    }} else {{
+                        // fallback to native
+                        const el = document.querySelector(args.selector);
+                        if (!el) return;
+                        if (el.value !== args.value) {{
+                            el.value = args.value;
+                            el.dispatchEvent(new Event("input", {{ bubbles: true }}));
+                            el.dispatchEvent(new Event("change", {{ bubbles: true }}));
+                        }}
                     }}
                 }})();
             """)
 
-        await set_field("#country_id", country_code)
-        await asyncio.sleep(1)
+        # Cache lookup
+        if cache_key in _location_cache:
+            region_code, city_code = _location_cache[cache_key]
+        else:
+            region_code = await get_location_code(region_name, "#region")
+            city_code = await get_location_code(city_name, "#city")
+            _location_cache[cache_key] = (region_code, city_code)
 
+        # Apply values using Select2 API
+        await set_field("#country_id", "1")
+        await asyncio.sleep(0.5)  # allow Select2 to load regions
         await set_field("#region", region_code)
-        await asyncio.sleep(1) 
-
+        await asyncio.sleep(0.5)  # allow Select2 to load cities
         await set_field("#city", city_code)
-        await asyncio.sleep(1) 
+        await asyncio.sleep(0.5)
 
-        print(f"Location set → {country_code} / {region_code} / {city_code}")
+        print(f"Location set → 1 / {region_code} / {city_code}")
         return True
 
     except Exception as e:
@@ -72,142 +102,150 @@ async def set_location(page, country_code, region_code, city_code):
         return False
 
 
-    except Exception as e:
-        print(f"Location injection failed: {e}")
-        return False
 
 
 async def bulk_inject_inputs(page, record, field_map, field_types):
-    selects = {}
-    others = {}
+    """
+    Injects values into form fields on a page.
+    Supports text, date, checkbox, select, and radio inputs.
+    """
+    jsdata = {}
 
     for key, selector in field_map.items():
         if key not in record:
             continue
-        field_type = field_types.get(key, "text")
-        value = str(record[key] or "")
 
-        # Convert date strings to YYYY-MM-DD
+        field_type = field_types.get(key, "text")
+        value = str(record[key] or "").strip()
+
+        # Normalize date to YYYY-MM-DD
         if field_type == "date" and value:
             try:
                 value = datetime.strptime(value, "%d-%m-%Y").strftime("%Y-%m-%d")
             except ValueError:
-                print(f"[WARNING] Invalid date format for {key}: {value}")
-                continue
+                try:
+                    datetime.strptime(value, "%Y-%m-%d")
+                except ValueError:
+                    print(f"[WARNING] Invalid date format for {key}: {value}")
+                    continue
 
-        if field_type == "select":
-            selects[selector] = {"type": "select", "value": value}
-        elif field_type in ["text", "checkbox", "date"]:
-            others[selector] = {"type": field_type, "value": value}
+        jsdata[selector] = {"type": field_type, "value": value}
 
-    async def inject(jsdata):
-        if not jsdata:
-            return
-        data_json = json.dumps(jsdata)
-        js = f"""
-        (function() {{
-            const data = {data_json};
-            for (const [selector, meta] of Object.entries(data)) {{
-                const el = document.querySelector(selector);
-                if (!el) continue;
-                switch(meta.type) {{
-                    case "checkbox":
-                        el.checked = meta.value;
-                        el.dispatchEvent(new Event("change", {{ bubbles: true }}));
-                        break;
-                    case "select":
-                        let matched = false;
-                        for (const option of el.options) {{
-                            if (option.value == meta.value || option.text == meta.value) {{
-                                el.value = option.value;
-                                matched = true;
-                                break;
-                            }}
+    # JS injection function
+    js = f"""
+    (function() {{
+        const data = {json.dumps(jsdata)};
+        for (const [selector, meta] of Object.entries(data)) {{
+            const el = document.querySelector(selector);
+            if (!el) continue;
+
+            switch(meta.type) {{
+                case "checkbox":
+                    el.checked = Boolean(meta.value);
+                    el.dispatchEvent(new Event("change", {{ bubbles: true }}));
+                    break;
+
+                case "select":
+                    let found = false;
+                    for (const opt of el.options) {{
+                        if (opt.value == meta.value || opt.text == meta.value) {{
+                            el.value = opt.value;
+                            found = true;
+                            break;
                         }}
-                        if (!matched && el.options.length) el.selectedIndex = 0;
-                        el.dispatchEvent(new Event("change", {{ bubbles: true }}));
-                        break;
-                    case "date":
-                    case "text":
-                    default:
-                        el.value = meta.value;
-                        el.dispatchEvent(new Event("input", {{ bubbles: true }}));
-                        el.dispatchEvent(new Event("change", {{ bubbles: true }}));
-                        break;
-                }}
+                    }}
+                    if (!found && el.options.length) {{
+                        el.selectedIndex = 0; // fallback
+                    }}
+                    el.dispatchEvent(new Event("change", {{ bubbles: true }}));
+                    break;
+
+                case "radio":
+                    const labels = document.querySelectorAll('label.form-check-label');
+                    for (const lbl of labels) {{
+                        if ((lbl.innerText || '').trim() === meta.value) {{
+                            const radio = document.getElementById(lbl.getAttribute('for'));
+                            if (radio) {{
+                                radio.checked = true;
+                                radio.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                            }}
+                            break;
+                        }}
+                    }}
+                    break;
+
+                case "date":
+                case "text":
+                default:
+                    el.value = meta.value ?? "";
+                    el.dispatchEvent(new Event("input", {{ bubbles: true }}));
+                    el.dispatchEvent(new Event("change", {{ bubbles: true }}));
+                    break;
             }}
-            return true;
-        }})();
-        """
-        await page.evaluate(js)
+        }}
+    }})();
+    """
 
-    await inject(selects)
-    await inject(others)
+    await page.evaluate(js)
 
 
-# --------------------- Special Fields ---------------------
-async def fill_clients(page, clients):
-    if not clients:
-        return
-    client = clients[0]
-    selectors = {
-        "[name='client[0][name]']": client.get("client_name", ""),
-        "[name='client[0][telephone]']": client.get("telephone_number", ""),
-        "[name='client[0][email]']": client.get("email_address", ""),
-    }
-    for sel, val in selectors.items():
-        el = await wait_for_element(page, sel, timeout=5)
-        if el:
-            await el.clear_input()
-            await asyncio.sleep(0.05)
-            await el.send_keys(val)
+# async def fill_clients(page, clients):
+#     if not clients:
+#         return
+#     client = clients[0]
+#     selectors = {
+#         "[name='client[0][name]']": client.get("client_name", ""),
+#         "[name='client[0][telephone]']": client.get("telephone_number", ""),
+#         "[name='client[0][email]']": client.get("email_address", ""),
+#     }
+#     for sel, val in selectors.items():
+#         el = await wait_for_element(page, sel, timeout=5)
+#         if el:
+#             await el.clear_input()
+#             await asyncio.sleep(0.05)
+#             await el.send_keys(val)
 
-async def fill_valuers(page, valuers):
-    if len(valuers) > 1:
-        for _ in range(len(valuers)-1):
-            add_btn = await wait_for_element(page, "#duplicateValuer", timeout=5)
-            if add_btn:
-                await add_btn.click()
-                await asyncio.sleep(0.5)
-    for idx, valuer in enumerate(valuers):
-        name_sel = f"[name='valuer[{idx}][id]']"
-        contrib_sel = f"[name='valuer[{idx}][contribution]']"
-        for sel, val in [(name_sel, valuer.get("valuer_name","")), (contrib_sel, str(valuer.get("contribution_percentage","")))]:
-            select_element = await wait_for_element(page, sel, timeout=10)
-            if not select_element:
-                continue
-            options = select_element.children
-            for opt in options:
-                text = (opt.text or "").strip()
-                if val.lower() in text.lower():
-                    await opt.select_option()
-                    break
+# async def fill_valuers(page, valuers):
+#     if len(valuers) > 1:
+#         for _ in range(len(valuers)-1):
+#             add_btn = await wait_for_element(page, "#duplicateValuer", timeout=5)
+#             if add_btn:
+#                 await add_btn.click()
+#                 await asyncio.sleep(0.5)
+#     for idx, valuer in enumerate(valuers):
+#         name_sel = f"[name='valuer[{idx}][id]']"
+#         contrib_sel = f"[name='valuer[{idx}][contribution]']"
+#         for sel, val in [(name_sel, valuer.get("valuer_name","")), (contrib_sel, str(valuer.get("contribution_percentage","")))]:
+#             select_element = await wait_for_element(page, sel, timeout=10)
+#             if not select_element:
+#                 continue
+#             options = select_element.children
+#             for opt in options:
+#                 text = (opt.text or "").strip()
+#                 if val.lower() in text.lower():
+#                     await opt.select_option()
+#                     break
 
-async def fill_report_users(page, users):
-    if not users:
-        return
-    if len(users) > 1:
-        for _ in range(len(users)-1):
-            add_btn = await wait_for_element(page, "#duplicateUser", timeout=5)
-            if add_btn:
-                await add_btn.click()
-                await asyncio.sleep(0.5)
-    for idx, name in enumerate(users):
-        sel = f"[name='user[{idx}][name]']"
-        el = await wait_for_element(page, sel, timeout=5)
-        if el:
-            await el.clear_input()
-            await asyncio.sleep(0.05)
-            await el.send_keys(name)
+# async def fill_report_users(page, users):
+#     if not users:
+#         return
+#     if len(users) > 1:
+#         for _ in range(len(users)-1):
+#             add_btn = await wait_for_element(page, "#duplicateUser", timeout=5)
+#             if add_btn:
+#                 await add_btn.click()
+#                 await asyncio.sleep(0.5)
+#     for idx, name in enumerate(users):
+#         sel = f"[name='user[{idx}][name]']"
+#         el = await wait_for_element(page, sel, timeout=5)
+#         if el:
+#             await el.clear_input()
+#             await asyncio.sleep(0.05)
+#             await el.send_keys(name)
 
 async def fill_form(page, record, field_map, field_types, is_last_step=False, retries=0, max_retries=2, skip_special_fields=False):
     try:
         start_time = time.time()
-
-        if not skip_special_fields:
-            if "clients" in record: await fill_clients(page, record["clients"])
-            if "valuers" in record: await fill_valuers(page, record["valuers"])
-            if "report_users" in record: await fill_report_users(page, record["report_users"])
         await bulk_inject_inputs(page, record, field_map, field_types)
 
         for key, selector in field_map.items():
@@ -216,14 +254,15 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False, re
             ftype = field_types.get(key,"text")
             try:
                 if ftype == "location":
-                    country_code = get_country_code(record.get("country",""))
-                    region_code = get_region_code(record.get("region",""))
-                    city_code = get_city_code(record.get("city",""))
-                    await set_location(page, country_code, region_code, city_code)
+                    country_name = record.get("country","")
+                    region_name = record.get("region","")
+                    city_name = record.get("city","")
+                    await set_location(page, country_name, region_name, city_name)
 
                 elif ftype == "file":
                     file_input = await wait_for_element(page, selector, timeout=10)
                     if file_input: await file_input.send_file(value)
+                    
                 elif ftype == "dynamic_select":
                     select_element = await wait_for_element(page, selector, timeout=10)
                     if select_element:
@@ -231,6 +270,7 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False, re
                             if value.lower() in (opt.text or "").lower():
                                 await opt.select_option()
                                 break
+
             except Exception:
                 continue
         
@@ -282,7 +322,7 @@ async def handle_macros(page, record):
         )
         if isinstance(result, dict) and result.get("status")=="FAILED":
             return result
-        # Navigate to add next batch if any
+       
         if idx < len(batches):
             formId = (await page.evaluate("window.location.href")).rstrip("/").split("/")[-1]
             next_url = f"https://qima.taqeem.sa/report/asset/create/{formId}"
@@ -290,8 +330,17 @@ async def handle_macros(page, record):
             await asyncio.sleep(1)
     return True
 
-# --------------------- Macro Editing ---------------------
+def merge_asset_with_parent(asset, parent):
+    inherit_fields = ["inspection_date", "owner_name", "country", "region", "city"]
+    merged = asset.copy()
+    for f in inherit_fields:
+        if f not in merged or not merged[f]:
+            merged[f] = parent.get(f)
+    return merged
+
+
 async def get_first_macro_id(page):
+
     tbody = await wait_for_element(page, "tbody", timeout=10)
     trs = await tbody.query_selector_all("tr") if tbody else []
     first_tr = trs[0] if trs else None
@@ -314,18 +363,10 @@ async def fill_assets_via_macro_urls(browser, record, macro_urls, tabs_num=3):
     if not asset_data or not macro_urls:
         return {"status": "FAILED", "error": "No assets or macro URLs provided"}
 
-    # Use first tab as main
     main_page = await browser.get(macro_urls[0])
-    
-    # Prepare tabs
     pages = [main_page] + [await browser.get("about:blank", new_tab=True) for _ in range(min(tabs_num-1, len(macro_urls)-1))]
-
-    # Split macro_urls into chunks per tab
-    def chunk_list(lst, n):
-        for i in range(0, len(lst), n):
-            yield lst[i:i+n]
     
-    chunks = list(chunk_list(macro_urls, len(macro_urls)//len(pages) + 1))
+    chunks = balanced_chunks(macro_urls, len(pages))
 
     async def process_chunk(chunk, page, offset):
         for idx, url in enumerate(chunk):
@@ -377,7 +418,7 @@ async def handle_macro_edits(browser, record, tabs_num=3):
     if first_macro_id is None:
         return {"status":"FAILED","error":"Could not determine first macro id"}
 
-    chunks = list(chunk_macros(asset_data, len(asset_data)//tabs_num + 1))
+    chunks = balanced_chunks(asset_data, tabs_num)
     pages = [main_page] + [await browser.get("", new_tab=True) for _ in range(tabs_num - 1)]
 
     async def process_chunk(chunk, page, offset):
@@ -399,6 +440,7 @@ async def handle_macro_edits(browser, record, tabs_num=3):
             except Exception as e:
                 print(f"[DB PATCH ERROR] {e}")
             try:
+                macro = merge_asset_with_parent(macro, record)
                 await fill_macro_form(
                     page,
                     macro_id,
@@ -414,20 +456,32 @@ async def handle_macro_edits(browser, record, tabs_num=3):
     await asyncio.gather(*tasks)
     return True
 
-async def runFormFill(browser, record_id):
+def balanced_chunks(lst, n):
+
+    k, m = divmod(len(lst), n)
+    chunks = []
+    start = 0
+    for i in range(n):
+        size = k + (1 if i < m else 0)
+        chunks.append(lst[start:start+size])
+        start += size
+    return chunks
+
+
+async def runFormFill2(browser, record_id, tabs_num=3):
     try:
         if not ObjectId.is_valid(record_id):
             return {"status":"FAILED","error":"Invalid record_id"}
         record = await db.halfreports.find_one({"_id": ObjectId(record_id)})
+        print("record", record)
+
         if not record: return {"status":"FAILED","error":"Record not found"}
 
         results=[]
         record["number_of_macros"] = str(len(record.get("asset_data",[])))
 
         main_page = await browser.get("https://qima.taqeem.sa/report/create/4/487")
-
-        if "clients" in record: await fill_clients(main_page, record["clients"])
-        if "valuers" in record: await fill_valuers(main_page, record["valuers"])
+        await asyncio.sleep(1)
 
         for step_num, step_config in enumerate(form_steps, 1):
             is_last = step_num == len(form_steps)
@@ -443,12 +497,12 @@ async def runFormFill(browser, record_id):
                 return {"status":"FAILED","results":results}
 
             if is_last:
-                translate = await wait_for_element(main_page, "a[href='https://qima.taqeem.sa/setlocale/ar']", timeout=30)
-                if not translate:
-                    results.append({"status":"FAILED","step":"translate","recordId":str(record["_id"]),"error":"Translate link not found"})
-                    return {"status":"FAILED","results":results}
-                await translate.click()
-                await asyncio.sleep(1)
+                # translate = await wait_for_element(main_page, "a[href='https://qima.taqeem.sa/setlocale/ar']", timeout=30)
+                # if not translate:
+                #     results.append({"status":"FAILED","step":"translate","recordId":str(record["_id"]),"error":"Translate link not found"})
+                #     return {"status":"FAILED","results":results}
+                # await translate.click()
+                # await asyncio.sleep(1)
 
                 main_url = await main_page.evaluate("window.location.href")
                 form_id = main_url.split("/")[-1]
@@ -461,7 +515,7 @@ async def runFormFill(browser, record_id):
                     return {"status":"FAILED","results":results}
                 print(f"[DB PATCH] report_id set: {form_id}")
 
-                macro_result = await handle_macro_edits(browser, record, tabs_num=3)
+                macro_result = await handle_macro_edits(browser, record, tabs_num=tabs_num)
                 if isinstance(macro_result, dict) and macro_result.get("status")=="FAILED":
                     results.append({"status":"FAILED","step":"macro_edit","recordId":str(record["_id"]),"error":macro_result.get("error")})
                     return {"status":"FAILED","results":results}

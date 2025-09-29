@@ -2,6 +2,7 @@ import asyncio, sys, json, traceback
 from login import startLogin, submitOtp
 from browser import closeBrowser, get_browser
 from formFiller import runFormFill
+from formFiller2 import runFormFill2
 from addAssets import add_assets_to_report, check_incomplete_macros
 
 
@@ -53,6 +54,11 @@ async def worker():
             elif action == "check":
                 browser = await get_browser()
                 result = await check_incomplete_macros(browser, cmd.get("reportId", ""))
+
+            elif action == "formFill2":
+                browser = await get_browser()
+                tabs_num = int(cmd.get("tabsNum", 3))  
+                result = await runFormFill2(browser, cmd.get("reportId", ""), tabs_num=tabs_num)
 
             elif action == "close":
                 await closeBrowser()

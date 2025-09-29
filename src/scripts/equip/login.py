@@ -4,7 +4,6 @@ from navigation import post_login_navigation
 
 async def startLogin(page, email, password):
     try:
-        await page.save_screenshot()
         email_input = await wait_for_element(page, "#username", 30)
         if not email_input:
             await closeBrowser()

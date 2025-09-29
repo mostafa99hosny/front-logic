@@ -1,5 +1,3 @@
-from formFiller import wait_for_element
-
 contry_codes = {
     "المملكة العربية السعودية": "1"
 }
@@ -22,10 +20,10 @@ def get_city_code(city):
     return city_codes.get(city.strip(), "")
 
 
-def find_location_code(location_selector):
-    country_selector = wait_for_element(None, location_selector, timeout=10)
-    if country_selector:
-        country_options = country_selector.children
-        for opt in country_options:
-            text = (opt.text or "").strip()
+# def find_location_code(location_selector):
+#     country_selector = wait_for_element(None, location_selector, timeout=10)
+#     if country_selector:
+#         country_options = country_selector.children
+#         for opt in country_options:
+#             text = (opt.text or "").strip()
             

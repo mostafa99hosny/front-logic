@@ -35,6 +35,7 @@ const halfReportSchema = new mongoose.Schema({
   has_other_users: { type: Boolean, default: false },
   report_users: { type: [String], default: [] },
   valuers: { type: [valuerSchema], required: true },
+  
   country: { type: String, default: "المملكة العربية السعودية" },
   region: { type: String },
   city: { type: String },
@@ -45,6 +46,7 @@ const halfReportSchema = new mongoose.Schema({
     asset_type: { type: String, default: "0" },
     asset_name: { type: String },
     model: { type: String },
+    submitState: {type: Number, default: 0},  
     year_made: { type: String },
     final_value: { type: String },
     asset_usage_id: { type: String },
