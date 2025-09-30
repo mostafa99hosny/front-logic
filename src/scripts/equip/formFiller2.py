@@ -9,7 +9,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from formSteps2 import form_steps, macro_form_config
-# from locationMapper import get_country_code, get_region_code, get_city_code
+from addAssets import check_incomplete_macros_after_creation
 
 MONGO_URI="mongodb+srv://test:JUL3OvyCSLVjSixj@assetval.pu3bqyr.mongodb.net/projectForever"
 client = AsyncIOMotorClient(MONGO_URI)
@@ -38,7 +38,6 @@ import json
 import asyncio
 import json
 
-# Global cache dictionary
 _location_cache = {}
 
 async def set_location(page, country_name, region_name, city_name):
@@ -88,9 +87,9 @@ async def set_location(page, country_name, region_name, city_name):
 
         # Apply values using Select2 API
         await set_field("#country_id", "1")
-        await asyncio.sleep(0.5)  # allow Select2 to load regions
+        await asyncio.sleep(0.5)  
         await set_field("#region", region_code)
-        await asyncio.sleep(0.5)  # allow Select2 to load cities
+        await asyncio.sleep(0.5) 
         await set_field("#city", city_code)
         await asyncio.sleep(0.5)
 
@@ -105,10 +104,6 @@ async def set_location(page, country_name, region_name, city_name):
 
 
 async def bulk_inject_inputs(page, record, field_map, field_types):
-    """
-    Injects values into form fields on a page.
-    Supports text, date, checkbox, select, and radio inputs.
-    """
     jsdata = {}
 
     for key, selector in field_map.items():
@@ -475,7 +470,8 @@ async def runFormFill2(browser, record_id, tabs_num=3):
         record = await db.halfreports.find_one({"_id": ObjectId(record_id)})
         print("record", record)
 
-        if not record: return {"status":"FAILED","error":"Record not found"}
+        if not record: 
+            return {"status":"FAILED","error":"Record not found"}
 
         results=[]
         record["number_of_macros"] = str(len(record.get("asset_data",[])))
@@ -490,26 +486,35 @@ async def runFormFill2(browser, record_id, tabs_num=3):
             if step_num==2 and len(record.get("asset_data",[]))>10:
                 result = await handle_macros(main_page, record)
             else:
-                result = await fill_form(main_page, record, step_config["field_map"], step_config["field_types"], is_last, skip_special_fields=True)
+                result = await fill_form(
+                    main_page, 
+                    record, 
+                    step_config["field_map"], 
+                    step_config["field_types"], 
+                    is_last, 
+                    skip_special_fields=True
+                )
 
             if isinstance(result, dict) and result.get("status")=="FAILED":
-                results.append({"status":"FAILED","step":step_num,"recordId":str(record["_id"]),"error":result.get("error")})
+                results.append({
+                    "status":"FAILED",
+                    "step":step_num,
+                    "recordId":str(record["_id"]),
+                    "error":result.get("error")
+                })
                 return {"status":"FAILED","results":results}
 
             if is_last:
-                # translate = await wait_for_element(main_page, "a[href='https://qima.taqeem.sa/setlocale/ar']", timeout=30)
-                # if not translate:
-                #     results.append({"status":"FAILED","step":"translate","recordId":str(record["_id"]),"error":"Translate link not found"})
-                #     return {"status":"FAILED","results":results}
-                # await translate.click()
-                # await asyncio.sleep(1)
-
                 main_url = await main_page.evaluate("window.location.href")
                 form_id = main_url.split("/")[-1]
                 if not form_id:
                     results.append({"status":"FAILED","step":"report_id","recordId":str(record["_id"]),"error":"Could not determine report_id"})
+                    return {"status":"FAILED","results":results}
 
-                res = await db.halfreports.update_one({"_id": record["_id"]}, {"$set": {"report_id": form_id}})
+                res = await db.halfreports.update_one(
+                    {"_id": record["_id"]}, 
+                    {"$set": {"report_id": form_id}}
+                )
                 if res.modified_count == 0:
                     results.append({"status":"FAILED","step":"report_id","recordId":str(record["_id"]),"error":"Could not set report_id"})
                     return {"status":"FAILED","results":results}
@@ -522,8 +527,87 @@ async def runFormFill2(browser, record_id, tabs_num=3):
 
                 results.append({"status":"MACRO_EDIT_SUCCESS","message":"All macros filled","recordId":str(record["_id"])})
 
+                pages = browser.tabs
+                for p in pages[1:]:
+                    await p.close()
+
+                checker_result = await check_incomplete_macros_after_creation(browser, record_id, browsers_num=tabs_num)
+                results.append({"status":"CHECKER_RESULT", "recordId":str(record["_id"]), "result":checker_result})
+
         return {"status":"SUCCESS","results":results}
 
     except Exception as e:
+        tb = traceback.format_exc() 
+        return {"status":"FAILED","error":str(e),"traceback":tb}
+    
+async def runCheckMacros(browser, record_id, tabs_num=3):
+    try:
+        if not ObjectId.is_valid(record_id):
+            return {"status":"FAILED","error":"Invalid record_id"}
+        
+        check_result = await check_incomplete_macros_after_creation(browser, record_id, browsers_num=tabs_num)
+        return {"status":"CHECKER_RESULT", "recordId":str(record_id), "result":check_result}
+    
+    except Exception as e:
         tb = traceback.format_exc()
         return {"status":"FAILED","error":str(e),"traceback":tb}
+    
+async def retryMacros(browser, record_id, tabs_num=3):
+    try:
+        report = await db.halfreports.find_one({"_id": ObjectId(record_id)})
+        if not report:
+            return {"status": "FAILED", "error": "Report not found"}
+
+        assets = report.get("asset_data", [])
+        if not assets:
+            return {"status": "FAILED", "error": "No assets found"}
+
+        retry_assets = [(idx, a) for idx, a in enumerate(assets) if a.get("submitState") == 0]
+        if not retry_assets:
+            return {"status": "SUCCESS", "message": "All macros are already complete"}
+
+        print(f"[RETRY] Retrying {len(retry_assets)} incomplete macros for report {record_id}")
+
+        pages = [await browser.get("about:blank", new_tab=True) for _ in range(min(tabs_num, len(retry_assets)))]
+
+        chunks = [retry_assets[i::len(pages)] for i in range(len(pages))]
+
+        async def process_chunk(page, assets_chunk):
+            for idx, asset in assets_chunk:
+                macro_id = asset.get("id")
+                if not macro_id:
+                    print(f"[SKIP] No macro_id for asset index {idx}")
+                    continue
+
+                try:
+                    merged_asset = merge_asset_with_parent(asset, report)
+
+                    await fill_macro_form(
+                        page,
+                        macro_id,
+                        merged_asset,
+                        macro_form_config["field_map"],
+                        macro_form_config["field_types"]
+                    )
+
+                    await db.halfreports.update_one(
+                        {"_id": report["_id"]},
+                        {"$set": {f"asset_data.{idx}.submitState": 1}}
+                    )
+
+                    print(f"[RETRY FILLED] macro_id={macro_id} asset_index={idx}")
+
+                except Exception as e:
+                    print(f"[RETRY ERROR] macro_id={macro_id}: {e}")
+
+        await asyncio.gather(*[process_chunk(p, chunk) for p, chunk in zip(pages, chunks)])
+
+        for p in pages:
+            await p.close()
+
+        return {"status": "SUCCESS", "message": f"Retried {len(retry_assets)} incomplete macros"}
+
+    except Exception as e:
+        tb = traceback.format_exc()
+        return {"status": "FAILED", "error": str(e), "traceback": tb}
+

@@ -1,6 +1,7 @@
 import asyncio
 import traceback
 from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
 
 MONGO_URI = "mongodb+srv://test:JUL3OvyCSLVjSixj@assetval.pu3bqyr.mongodb.net/projectForever"
 client = AsyncIOMotorClient(MONGO_URI)
@@ -56,6 +57,95 @@ async def check_incomplete_macros(browser, report_id, browsers_num=3):
                     {"$set": {"submitState": 1}}
                 )
                 print("Matched:", result.matched_count, "Modified:", result.modified_count)
+
+        return {"status": "SUCCESS", "macro_count": incomplete_count}
+
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("traceback:", tb)
+        return {"status": "FAILED", "error": str(e), "traceback": tb}
+    
+
+async def check_incomplete_macros_after_creation(browser, record_id, browsers_num=3):
+    try:
+        print("Fetching assets for DB ID:", record_id)
+        report = await db.halfreports.find_one({"_id": ObjectId(record_id)})
+        assets = report.get("asset_data", [])
+        print("assets:", assets)
+        if not assets:
+            return {"status": "FAILED", "error": "No assets found in DB"}
+        
+        report_id = report.get("report_id")
+
+        pages_num, _ = await get_macro_pages_num(browser, report_id)
+        if pages_num == 0:
+            return {"status": "SUCCESS", "macro_count": 0, "message": "No macros to check"}
+
+        macros_urls = []
+
+        async def fetch_macros_from_page(page_no):
+            page = await browser.get(f"https://qima.taqeem.sa/report/{report_id}?page={page_no}")
+            await asyncio.sleep(0.5)
+            page_macros = await get_macros_from_page(page)
+            macros_urls.extend(page_macros)
+
+        await asyncio.gather(*[fetch_macros_from_page(p) for p in range(1, pages_num + 1)])
+        macros_urls = list(set(macros_urls))
+        if not macros_urls:
+            return {"status": "SUCCESS", "macro_count": 0, "message": "No macros found"}
+
+        # 2️⃣ Open tabs
+        pages = []
+        for _ in range(min(browsers_num, len(macros_urls))):
+            p = await browser.get("about:blank", new_tab=True)
+            pages.append(p)
+
+        # 3️⃣ Split macros across tabs
+        chunks = [macros_urls[i::len(pages)] for i in range(len(pages))]
+
+        incomplete_count = 0
+
+        async def process_chunk(page, urls):
+            nonlocal incomplete_count
+            for url in urls:
+                macro_id = url.rstrip("/").split("/")[-2].strip()
+                print("Macro ID to check:", macro_id)
+
+                show_url = url.replace("edit", "show")
+                await page.get(show_url)
+                await asyncio.sleep(0.5)
+                html_content = await page.get_content()
+
+                submit_state = 0 if (html_content and "غير مكتملة" in html_content) else 1
+
+                result = await db.halfreports.update_one(
+                    {"_id": ObjectId(record_id), "asset_data.id": int(macro_id)},
+                    {"$set": {"asset_data.$.submitState": submit_state}}
+                )
+
+                if submit_state == 0:
+                    print("Macro is incomplete:", macro_id)
+                    incomplete_count += 1
+                else:
+                    print("Macro is complete:", macro_id)
+
+                print("Matched:", result.matched_count, "Modified:", result.modified_count)
+
+        # 4️⃣ Run workers
+        await asyncio.gather(*[process_chunk(p, chunk) for p, chunk in zip(pages, chunks)])
+
+        # 5️⃣ Cleanup
+        for p in pages:
+            await p.close()
+
+        return {"status": "SUCCESS", "macro_count": incomplete_count}
+
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("traceback:", tb)
+        return {"status": "FAILED", "error": str(e), "traceback": tb}
+
+
 
         return {"status": "SUCCESS", "macro_count": incomplete_count}
 

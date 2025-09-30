@@ -4,7 +4,7 @@ const AppError = require("../../shared/utils/appError");
 const extractAssetData = require("../../application/taqeem/extractAssetData.uc.js");
 const reportDataExtract = require("../../application/taqeem/reportDataExtract.uc.js");
 const { getAssetsByUserIdUC } = require("../../application/reports/getAssetsByUserId.uc.js");
-const {getHalfReportsByUserIdUC} = require("../../application/reports/getHalfReportsByUserId.uc.js");
+const { getHalfReportsByUserIdUC } = require("../../application/reports/getHalfReportsByUserId.uc.js");
 
 let pyWorker = null;
 let stdoutBuffer = "";
@@ -152,7 +152,7 @@ const fillHalfReportForm = async (req, res, next) => {
 const fillReportForm2 = async (req, res, next) => {
   const { id } = req.body;
   let tabsNum = parseInt(req.body.tabsNum, 10);
-  if (isNaN(tabsNum) || tabsNum < 1) tabsNum = 3; 
+  if (isNaN(tabsNum) || tabsNum < 1) tabsNum = 3;
 
   try {
     const response = await sendCommand({ action: "formFill2", reportId: id, tabsNum });
@@ -165,7 +165,7 @@ const fillReportForm2 = async (req, res, next) => {
 
 const reportDataExtraction = async (req, res, next) => {
   const excelFilePath = req.files?.excel?.[0]?.path;
-  const pdfFilePaths  = req.files?.pdfs?.[0]?.path;
+  const pdfFilePaths = req.files?.pdfs?.[0]?.path;
   const userId = req.user.userId;
   try {
     const result = await reportDataExtract(excelFilePath, pdfFilePaths, userId);
@@ -240,6 +240,36 @@ const checkAssets = async (req, res, next) => {
   }
 };
 
+const checkMacros = async (req, res, next) => {
+  const { id } = req.body;
+  let tabsNum = parseInt(req.body.tabsNum, 10);
+  if (isNaN(tabsNum) || tabsNum < 1) tabsNum = 3;
+
+  try {
+    const responses = await sendCommand({ action: "checkMacros", reportId: id, tabsNum });
+    res.json(responses || { status: "UNKNOWN_RESPONSE" });
+
+  } catch (err) {
+    console.error("[checkMacros] error:", err);
+    next(err instanceof AppError ? err : new AppError(String(err), 500));
+  }
+};
+
+const retryMacros = async (req, res, next) => {
+  const { id } = req.body;
+  let tabsNum = parseInt(req.body.tabsNum, 10);
+  if (isNaN(tabsNum) || tabsNum < 1) tabsNum = 3;
+
+  try {
+    const responses = await sendCommand({ action: "retryMacros", recordId: id, tabsNum });
+    res.json(responses || { status: "UNKNOWN_RESPONSE" });
+
+  } catch (err) {
+    console.error("[retryMacros] error:", err);
+    next(err instanceof AppError ? err : new AppError(String(err), 500));
+  }
+};
+
 const getAssetsByUserId = async (req, res, next) => {
   try {
     const userId = req.user.userId;
@@ -266,9 +296,11 @@ module.exports = {
   loginOrOtp,
   fillHalfReportForm,
   fillReportForm2,
+  retryMacros,
   reportDataExtraction,
   extractExistingReportData,
   getHalfReportsByUserId,
+  checkMacros,
   getAssetsByUserId,
   addAssetsToReport,
   checkAssets,

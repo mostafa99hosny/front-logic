@@ -11,6 +11,8 @@ const {
   extractExistingReportData, 
   getAssetsByUserId, 
   checkAssets,
+  checkMacros,
+  retryMacros,
   getHalfReportsByUserId,
   reportDataExtraction
  } = require('../controllers/halfReport.controller'); 
@@ -51,7 +53,9 @@ scriptRouter.post('/equip/fillForm2', authMiddleware, fillReportForm2);
 scriptRouter.get('/equip/assets', authMiddleware, getAssetsByUserId);
 scriptRouter.get('/equip/reports', authMiddleware, getHalfReportsByUserId);
 
-scriptRouter.post('/equip/check', authMiddleware, checkAssets);
+// scriptRouter.post('/equip/check', authMiddleware, checkAssets);
+scriptRouter.post('/equip/check', authMiddleware, checkMacros);
+scriptRouter.post('/equip/retry', authMiddleware, retryMacros);
 
 scriptRouter.post(
   '/equip/extractData',
