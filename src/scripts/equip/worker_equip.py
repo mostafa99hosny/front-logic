@@ -4,6 +4,8 @@ from browser import closeBrowser, get_browser
 from formFiller import runFormFill
 from formFiller2 import runFormFill2, check_incomplete_macros_after_creation, retryMacros
 from addAssets import add_assets_to_report, check_incomplete_macros
+import sys 
+sys.stdout.reconfigure(encoding='utf-8')
 
 
 async def _readline(loop):
