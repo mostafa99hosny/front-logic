@@ -87,11 +87,11 @@ async def set_location(page, country_name, region_name, city_name):
 
         # Apply values using Select2 API
         await set_field("#country_id", "1")
-        await asyncio.sleep(0.5)  
+        await asyncio.sleep(1)  
         await set_field("#region", region_code)
-        await asyncio.sleep(0.5) 
+        await asyncio.sleep(1) 
         await set_field("#city", city_code)
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1)
 
         print(f"Location set → 1 / {region_code} / {city_code}")
         return True
@@ -569,7 +569,6 @@ async def retryMacros(browser, record_id, tabs_num=3):
         print(f"[RETRY] Retrying {len(retry_assets)} incomplete macros for report {record_id}")
 
         pages = [await browser.get("about:blank", new_tab=True) for _ in range(min(tabs_num, len(retry_assets)))]
-
         chunks = [retry_assets[i::len(pages)] for i in range(len(pages))]
 
         async def process_chunk(page, assets_chunk):
