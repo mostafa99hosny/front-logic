@@ -4,6 +4,7 @@ import traceback
 import json
 import time
 from datetime import datetime
+import unicodedata, re
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -44,6 +45,13 @@ async def set_location(page, country_name, region_name, city_name):
     try:
         cache_key = f"{country_name}|{region_name}|{city_name}"
 
+        def normalize_text(text: str) -> str:
+            if not text:
+                return ""
+            text = unicodedata.normalize("NFKC", text)
+            text = re.sub(r"\s+", " ", text)  # normalize all whitespace
+            return text.strip()
+
         async def get_location_code(name, selector):
             if not name:
                 return None
@@ -51,8 +59,8 @@ async def set_location(page, country_name, region_name, city_name):
             if not el:
                 return None
             for opt in el.children:
-                text = (opt.text or "").strip()
-                if name.lower() in text.lower():
+                text = normalize_text(opt.text)
+                if normalize_text(name).lower() in text.lower():
                     return opt.attrs.get("value")
             return None
 
