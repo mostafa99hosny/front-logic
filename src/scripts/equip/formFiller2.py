@@ -43,19 +43,30 @@ _location_cache = {}
 
 async def set_location(page, country_name, region_name, city_name):
     try:
+        import re, unicodedata, json, asyncio
+
         cache_key = f"{country_name}|{region_name}|{city_name}"
 
         def normalize_text(text: str) -> str:
             if not text:
                 return ""
             text = unicodedata.normalize("NFKC", text)
-            text = re.sub(r"\s+", " ", text)  
+            text = re.sub(r"\s+", " ", text)
             return text.strip()
+
+        async def wait_for_options(selector, min_options=2, timeout=10):
+            """Wait until dropdown has at least min_options children."""
+            for _ in range(timeout * 2):  # check every 0.5s
+                el = await wait_for_element(page, selector, timeout=1)
+                if el and getattr(el, "children", None) and len(el.children) >= min_options:
+                    return el
+                await asyncio.sleep(0.5)
+            return None
 
         async def get_location_code(name, selector):
             if not name:
                 return None
-            el = await wait_for_element(page, selector, timeout=5)
+            el = await wait_for_options(selector)
             if not el:
                 return None
             for opt in el.children:
@@ -65,15 +76,15 @@ async def set_location(page, country_name, region_name, city_name):
             return None
 
         async def set_field(selector, value):
+            if not value:  
+                return
             args = json.dumps({"selector": selector, "value": value})
             await page.evaluate(f"""
                 (function() {{
                     const args = {args};
                     if (window.$) {{
-                        // Use Select2/jQuery API if available
                         window.$(args.selector).val(args.value).trigger("change");
                     }} else {{
-                        // fallback to native
                         const el = document.querySelector(args.selector);
                         if (!el) return;
                         if (el.value !== args.value) {{
@@ -85,21 +96,22 @@ async def set_location(page, country_name, region_name, city_name):
                 }})();
             """)
 
-        # Cache lookup
-        if cache_key in _location_cache:
-            region_code, city_code = _location_cache[cache_key]
-        else:
+        region_code, city_code = _location_cache.get(cache_key, (None, None))
+
+        if not region_code:
             region_code = await get_location_code(region_name, "#region")
+        if not city_code:
             city_code = await get_location_code(city_name, "#city")
+
+        if region_code or city_code:
             _location_cache[cache_key] = (region_code, city_code)
 
-        # Apply values using Select2 API
         await set_field("#country_id", "1")
-        await asyncio.sleep(1)  
+        await asyncio.sleep(0.5)
         await set_field("#region", region_code)
-        await asyncio.sleep(1) 
+        await asyncio.sleep(0.5)
         await set_field("#city", city_code)
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.5)
 
         print(f"Location set → 1 / {region_code} / {city_code}")
         return True
@@ -107,9 +119,6 @@ async def set_location(page, country_name, region_name, city_name):
     except Exception as e:
         print(f"Location injection failed: {e}")
         return False
-
-
-
 
 async def bulk_inject_inputs(page, record, field_map, field_types):
     jsdata = {}
@@ -346,19 +355,22 @@ async def handle_macros_multi(browser, record, tab_nums=3, batch_size=10):
     main_page = browser.tabs[0]  
     current_url = await main_page.evaluate("window.location.href")
 
+    # 1️⃣ Open all tabs first
     pages = [main_page]
     for _ in range(len(distribution) - 1):
         new_tab = await browser.get(current_url, new_tab=True)
         pages.append(new_tab)
 
-        # Wait until the new tab is fully loaded
-        for _ in range(20):  # max wait 10s (20*0.5)
-            ready_state = await new_tab.evaluate("document.readyState")
-            key_el = await wait_for_element(new_tab, "#macros", timeout=0.5)
+    # 2️⃣ Wait for all tabs to be ready (key element present)
+    for page in pages:
+        for _ in range(20):  # max wait 10s
+            ready_state = await page.evaluate("document.readyState")
+            key_el = await wait_for_element(page, "#macros", timeout=0.5)
             if ready_state == "complete" and key_el:
                 break
             await asyncio.sleep(0.5)
 
+    # 3️⃣ Process assets concurrently across tabs
     async def process_assets(page, start_index, count):
         end_index = start_index + count
         subset = macros[start_index:end_index]
@@ -392,6 +404,7 @@ async def handle_macros_multi(browser, record, tab_nums=3, batch_size=10):
 
         return True
 
+    # assign chunks to pages
     tasks = []
     idx = 0
     for page, count in zip(pages, distribution):
@@ -400,11 +413,13 @@ async def handle_macros_multi(browser, record, tab_nums=3, batch_size=10):
 
     await asyncio.gather(*tasks)
 
+    # close extra tabs
     await asyncio.sleep(2)
     for p in pages[1:]:
         await p.close()
 
     return True
+
 
 
 

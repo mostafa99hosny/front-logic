@@ -75,7 +75,24 @@ async def check_incomplete_macros_after_creation(browser, record_id, browsers_nu
             return {"status": "FAILED", "error": "No assets found in DB"}
         
         report_id = report.get("report_id")
+        report_url = f"https://qima.taqeem.sa/report/{report_id}"
 
+        # Open the main report page
+        main_page = await browser.get(report_url)
+        await asyncio.sleep(1)
+
+        # Check for delete button
+        delete_btn = await wait_for_element(main_page, "#delete_report", timeout=5)
+        if delete_btn:
+            print("[INFO] Delete button exists, assuming all macros complete.")
+            # Mark all assets as complete
+            await db.halfreports.update_one(
+                {"_id": ObjectId(record_id)},
+                {"$set": {f"asset_data.{i}.submitState": 1 for i in range(len(assets))}}
+            )
+            return {"status": "SUCCESS", "macro_count": 0, "message": "All macros complete"}
+
+        # Otherwise, proceed with existing per-macro checking
         pages_num, _ = await get_macro_pages_num(browser, report_id)
         if pages_num == 0:
             return {"status": "SUCCESS", "macro_count": 0, "message": "No macros to check"}
@@ -83,9 +100,9 @@ async def check_incomplete_macros_after_creation(browser, record_id, browsers_nu
         macros_urls = []
 
         async def fetch_macros_from_page(page_no):
-            page = await browser.get(f"https://qima.taqeem.sa/report/{report_id}?page={page_no}")
+            url_page = await browser.get(f"{report_url}?page={page_no}")
             await asyncio.sleep(0.5)
-            page_macros = await get_macros_from_page(page)
+            page_macros = await get_macros_from_page(url_page)
             macros_urls.extend(page_macros)
 
         await asyncio.gather(*[fetch_macros_from_page(p) for p in range(1, pages_num + 1)])
@@ -93,13 +110,8 @@ async def check_incomplete_macros_after_creation(browser, record_id, browsers_nu
         if not macros_urls:
             return {"status": "SUCCESS", "macro_count": 0, "message": "No macros found"}
 
-        # 2️⃣ Open tabs
-        pages = []
-        for _ in range(min(browsers_num, len(macros_urls))):
-            p = await browser.get("about:blank", new_tab=True)
-            pages.append(p)
-
-        # 3️⃣ Split macros across tabs
+        # Open worker tabs
+        pages = [await browser.get("about:blank", new_tab=True) for _ in range(min(browsers_num, len(macros_urls)))]
         chunks = [macros_urls[i::len(pages)] for i in range(len(pages))]
 
         incomplete_count = 0
@@ -108,8 +120,6 @@ async def check_incomplete_macros_after_creation(browser, record_id, browsers_nu
             nonlocal incomplete_count
             for url in urls:
                 macro_id = url.rstrip("/").split("/")[-2].strip()
-                print("Macro ID to check:", macro_id)
-
                 show_url = url.replace("edit", "show")
                 await page.get(show_url)
                 await asyncio.sleep(0.5)
@@ -117,23 +127,16 @@ async def check_incomplete_macros_after_creation(browser, record_id, browsers_nu
 
                 submit_state = 0 if (html_content and "غير مكتملة" in html_content) else 1
 
-                result = await db.halfreports.update_one(
+                await db.halfreports.update_one(
                     {"_id": ObjectId(record_id), "asset_data.id": int(macro_id)},
                     {"$set": {"asset_data.$.submitState": submit_state}}
                 )
 
                 if submit_state == 0:
-                    print("Macro is incomplete:", macro_id)
                     incomplete_count += 1
-                else:
-                    print("Macro is complete:", macro_id)
 
-                print("Matched:", result.matched_count, "Modified:", result.modified_count)
-
-        # 4️⃣ Run workers
         await asyncio.gather(*[process_chunk(p, chunk) for p, chunk in zip(pages, chunks)])
 
-        # 5️⃣ Cleanup
         for p in pages:
             await p.close()
 
@@ -143,16 +146,6 @@ async def check_incomplete_macros_after_creation(browser, record_id, browsers_nu
         tb = traceback.format_exc()
         print("traceback:", tb)
         return {"status": "FAILED", "error": str(e), "traceback": tb}
-
-
-
-        return {"status": "SUCCESS", "macro_count": incomplete_count}
-
-    except Exception as e:
-        tb = traceback.format_exc()
-        print("traceback:", tb)
-        return {"status": "FAILED", "error": str(e), "traceback": tb}
-
 
 
 async def add_assets_to_report(browser, report_id, browsers_num=5):
