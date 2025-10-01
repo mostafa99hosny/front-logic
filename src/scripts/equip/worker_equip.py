@@ -4,9 +4,9 @@ from browser import closeBrowser, get_browser
 from formFiller import runFormFill
 from formFiller2 import runFormFill2, check_incomplete_macros_after_creation, retryMacros
 from addAssets import add_assets_to_report, check_incomplete_macros
-# import sys 
-# sys.stdout.reconfigure(encoding='utf-8')
+import sys 
 
+sys.stdout.reconfigure(encoding='utf-8')
 
 async def _readline(loop):
     return await loop.run_in_executor(None, sys.stdin.readline)
@@ -31,7 +31,6 @@ async def worker():
             action = cmd.get("action")
 
             if action == "login":
-                # always start a new browser for login
                 browser = await get_browser(force_new=True)
                 page = await browser.get(
                     "https://sso.taqeem.gov.sa/realms/REL_TAQEEM/protocol/openid-connect/auth"

@@ -49,7 +49,7 @@ async def set_location(page, country_name, region_name, city_name):
             if not text:
                 return ""
             text = unicodedata.normalize("NFKC", text)
-            text = re.sub(r"\s+", " ", text)  # normalize all whitespace
+            text = re.sub(r"\s+", " ", text)  
             return text.strip()
 
         async def get_location_code(name, selector):
@@ -307,6 +307,107 @@ def chunk_macros(macros, chunk_size=10):
     for i in range(0, len(macros), chunk_size):
         yield macros[i:i+chunk_size]
 
+def calculate_tab_batches(total_assets: int, max_tabs: int, batch_size: int = 10):
+    """
+    Given the total number of assets, the maximum number of tabs allowed,
+    and the batch size (10 by default), return a list where each element
+    represents the number of assets assigned to that tab.
+
+    Example:
+      total_assets=25, max_tabs=5
+      -> [10, 10, 5]
+    """
+    if total_assets <= batch_size:
+        return [total_assets]  # only one tab needed
+    
+    # calculate how many tabs are theoretically required
+    required_tabs = (total_assets + batch_size - 1) // batch_size  # ceil division
+    tabs_to_use = min(required_tabs, max_tabs)
+
+    # Distribute assets across tabs
+    # Each tab ideally gets close to total_assets / tabs_to_use
+    base, extra = divmod(total_assets, tabs_to_use)
+    result = []
+    for i in range(tabs_to_use):
+        size = base + (1 if i < extra else 0)
+        result.append(size)
+    return result
+
+
+async def handle_macros_multi(browser, record, tab_nums=3, batch_size=10):
+    macros = record.get("asset_data", [])
+    total_assets = len(macros)
+    if not total_assets:
+        return True
+
+    distribution = calculate_tab_batches(total_assets, tab_nums, batch_size)
+    print(f"[MACRO DISTRIBUTION] total={total_assets}, tabs={len(distribution)}, split={distribution}")
+
+    main_page = browser.tabs[0]  
+    current_url = await main_page.evaluate("window.location.href")
+
+    pages = [main_page]
+    for _ in range(len(distribution) - 1):
+        new_tab = await browser.get(current_url, new_tab=True)
+        pages.append(new_tab)
+
+        # Wait until the new tab is fully loaded
+        for _ in range(20):  # max wait 10s (20*0.5)
+            ready_state = await new_tab.evaluate("document.readyState")
+            key_el = await wait_for_element(new_tab, "#macros", timeout=0.5)
+            if ready_state == "complete" and key_el:
+                break
+            await asyncio.sleep(0.5)
+
+    async def process_assets(page, start_index, count):
+        end_index = start_index + count
+        subset = macros[start_index:end_index]
+        for i in range(0, len(subset), batch_size):
+            chunk = subset[i:i+batch_size]
+            temp_record = record.copy()
+            temp_record["asset_data"] = chunk
+            temp_record["number_of_macros"] = str(len(chunk))
+            
+            result = await fill_form(
+                page,
+                temp_record,
+                form_steps[1]["field_map"],
+                form_steps[1]["field_types"],
+                is_last_step=True,
+                skip_special_fields=True
+            )
+
+            if isinstance(result, dict):
+                if result.get("status") == "FAILED":
+                    print(f"[ERROR] Tab failed for batch {start_index+i}–{start_index+i+len(chunk)}: {result}")
+                    return result
+                elif result.get("status") == "SAVED":
+                    print(f"[SUCCESS] Save button clicked successfully for batch {start_index+i}–{start_index+i+len(chunk)}")
+            else:
+                print(f"[INFO] fill_form completed for batch {start_index+i}–{start_index+i+len(chunk)}, unknown save status")
+
+            if i + batch_size < len(subset):
+                await page.get(current_url)
+                await asyncio.sleep(1)
+
+        return True
+
+    tasks = []
+    idx = 0
+    for page, count in zip(pages, distribution):
+        tasks.append(process_assets(page, idx, count))
+        idx += count
+
+    await asyncio.gather(*tasks)
+
+    await asyncio.sleep(2)
+    for p in pages[1:]:
+        await p.close()
+
+    return True
+
+
+
 async def handle_macros(page, record):
     macros = record.get("asset_data", [])
     if not macros: return True
@@ -476,7 +577,6 @@ async def runFormFill2(browser, record_id, tabs_num=3):
         if not ObjectId.is_valid(record_id):
             return {"status":"FAILED","error":"Invalid record_id"}
         record = await db.halfreports.find_one({"_id": ObjectId(record_id)})
-        print("record", record)
 
         if not record: 
             return {"status":"FAILED","error":"Record not found"}
@@ -491,8 +591,8 @@ async def runFormFill2(browser, record_id, tabs_num=3):
             is_last = step_num == len(form_steps)
             results.append({"status":"STEP_STARTED","step":step_num,"recordId":str(record["_id"])})
 
-            if step_num==2 and len(record.get("asset_data",[]))>10:
-                result = await handle_macros(main_page, record)
+            if step_num == 2 and len(record.get("asset_data", [])) > 10:
+                result = await handle_macros_multi(browser, record, tab_nums=tabs_num, batch_size=10)
             else:
                 result = await fill_form(
                     main_page, 

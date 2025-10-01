@@ -71,7 +71,6 @@ async def check_incomplete_macros_after_creation(browser, record_id, browsers_nu
         print("Fetching assets for DB ID:", record_id)
         report = await db.halfreports.find_one({"_id": ObjectId(record_id)})
         assets = report.get("asset_data", [])
-        print("assets:", assets)
         if not assets:
             return {"status": "FAILED", "error": "No assets found in DB"}
         
