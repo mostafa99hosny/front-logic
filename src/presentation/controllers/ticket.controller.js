@@ -23,7 +23,8 @@ const createTicket = async (req, res) => {
       subject,
       classification,
       description,
-      attachments
+      attachments,
+      createdBy: req.user.userId // Link ticket to user
     });
 
     const savedTicket = await newTicket.save();
@@ -46,7 +47,13 @@ const createTicket = async (req, res) => {
 // Get all tickets
 const getAllTickets = async (req, res) => {
   try {
-    const tickets = await Ticket.find().sort({ createdAt: -1 });
+    let tickets;
+    const adminEmail = "admin.tickets@gmail.com";
+    if (req.user.email === adminEmail) {
+      tickets = await Ticket.find().sort({ createdAt: -1 });
+    } else {
+      tickets = await Ticket.find({ createdBy: req.user.userId }).sort({ createdAt: -1 });
+    }
     res.status(200).json({
       success: true,
       tickets
