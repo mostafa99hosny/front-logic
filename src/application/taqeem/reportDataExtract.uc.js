@@ -32,14 +32,12 @@ const reportDataExtract = async (excelFilePath, pdfFilePaths = null, userId) => 
                 return `${yyyy}-${mm}-${dd}`; // format: YYYY-MM-DD
             }
 
-            // Handle rich text
             if (typeof value === 'object' && value.hasOwnProperty('text')) {
                 return String(value.text);
             }
 
             return String(value);
         };
-
 
         const headerRow = baseSheet.getRow(1);
         const valueRow = baseSheet.getRow(2);
@@ -53,8 +51,6 @@ const reportDataExtract = async (excelFilePath, pdfFilePaths = null, userId) => 
                     valuer_name: valueRow.getCell(headerRow.values.indexOf('valuer_name')).value,
                     contribution_percentage: valueRow.getCell(headerRow.values.indexOf('contribution_percentage')).value
                 }];
-
-
 
             } else {
                 baseData[key] = value;
@@ -97,6 +93,8 @@ const reportDataExtract = async (excelFilePath, pdfFilePaths = null, userId) => 
         const costAssets = parseAssetSheet(costAssetsSheet, false);
 
         const allAssets = [...marketAssets, ...costAssets];
+
+        
 
         const halfReportDoc = new HalfReport({
             ...baseData,
