@@ -4,7 +4,7 @@ from login import startLogin, submitOtp
 from browser import closeBrowser, get_browser
 
 from formFiller import runFormFill
-from formFiller2 import runFormFill2, check_incomplete_macros_after_creation, retryMacros
+from formFiller2 import runFormFill2, runCheckMacros, retryMacros
 from addAssets import add_assets_to_report, check_incomplete_macros
 
 if platform.system().lower() == "windows":
@@ -69,7 +69,7 @@ async def worker():
                 browser = await get_browser()
 
                 tabs_num = int(cmd.get("tabsNum", 3))
-                result = await check_incomplete_macros_after_creation(browser, cmd.get("reportId", ""), browsers_num=tabs_num)
+                result = await runCheckMacros(browser, cmd.get("reportId", ""), tabs_num=tabs_num)
 
             elif action == "retryMacros":
                 browser = await get_browser()

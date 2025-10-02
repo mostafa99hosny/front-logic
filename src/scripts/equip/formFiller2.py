@@ -10,7 +10,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from formSteps2 import form_steps, macro_form_config
-from addAssets import check_incomplete_macros_after_creation
+from addAssets import check_incomplete_macros_after_creation, check_incomplete_macros
 
 MONGO_URI="mongodb+srv://test:JUL3OvyCSLVjSixj@assetval.pu3bqyr.mongodb.net/projectForever"
 client = AsyncIOMotorClient(MONGO_URI)
@@ -666,14 +666,28 @@ async def runFormFill2(browser, record_id, tabs_num=3):
 async def runCheckMacros(browser, record_id, tabs_num=3):
     try:
         if not ObjectId.is_valid(record_id):
-            return {"status":"FAILED","error":"Invalid record_id"}
+            return {"status": "FAILED", "error": "Invalid record_id"}
         
-        check_result = await check_incomplete_macros_after_creation(browser, record_id, browsers_num=tabs_num)
-        return {"status":"CHECKER_RESULT", "recordId":str(record_id), "result":check_result}
-    
+        report_id = await db.halfreports.find_one({"_id": ObjectId(record_id)}).get("report_id")
+        if not report_id:
+            return {"status": "FAILED", "error": "No report_id found"}
+
+        check_result = await check_incomplete_macros(browser, report_id)
+
+        return {
+            "status": "CHECKER_RESULT",
+            "recordId": str(record_id),
+            "result": check_result
+        }
+
     except Exception as e:
         tb = traceback.format_exc()
-        return {"status":"FAILED","error":str(e),"traceback":tb}
+        return {
+            "status": "FAILED",
+            "error": str(e),
+            "traceback": tb
+        }
+
     
 async def retryMacros(browser, record_id, tabs_num=3):
     try:
@@ -691,6 +705,7 @@ async def retryMacros(browser, record_id, tabs_num=3):
 
         print(f"[RETRY] Retrying {len(retry_assets)} incomplete macros for report {record_id}")
 
+        # Open worker tabs
         pages = [await browser.get("about:blank", new_tab=True) for _ in range(min(tabs_num, len(retry_assets)))]
         chunks = [retry_assets[i::len(pages)] for i in range(len(pages))]
 
@@ -702,6 +717,7 @@ async def retryMacros(browser, record_id, tabs_num=3):
                     continue
 
                 try:
+                    # Fill macro form again
                     merged_asset = merge_asset_with_parent(asset, report)
 
                     await fill_macro_form(
@@ -712,12 +728,23 @@ async def retryMacros(browser, record_id, tabs_num=3):
                         macro_form_config["field_types"]
                     )
 
+                    # Now CHECK the macro again
+                    show_url = f"https://qima.taqeem.sa/report/macro/{macro_id}/show"
+                    await page.get(show_url)
+                    await asyncio.sleep(0.5)
+                    html_content = await page.get_content()
+
+                    submit_state = 0 if (html_content and "غير مكتملة" in html_content) else 1
+
                     await db.halfreports.update_one(
                         {"_id": report["_id"]},
-                        {"$set": {f"asset_data.{idx}.submitState": 1}}
+                        {"$set": {f"asset_data.{idx}.submitState": submit_state}}
                     )
 
-                    print(f"[RETRY FILLED] macro_id={macro_id} asset_index={idx}")
+                    if submit_state == 1:
+                        print(f"[RETRY SUCCESS] macro_id={macro_id} asset_index={idx}")
+                    else:
+                        print(f"[RETRY STILL INCOMPLETE] macro_id={macro_id} asset_index={idx}")
 
                 except Exception as e:
                     print(f"[RETRY ERROR] macro_id={macro_id}: {e}")
@@ -727,9 +754,15 @@ async def retryMacros(browser, record_id, tabs_num=3):
         for p in pages:
             await p.close()
 
-        return {"status": "SUCCESS", "message": f"Retried {len(retry_assets)} incomplete macros"}
+        refreshed = await db.halfreports.find_one({"_id": ObjectId(record_id)})
+        still_incomplete = len([a for a in refreshed.get("asset_data", []) if a.get("submitState") == 0])
+
+        return {
+            "status": "SUCCESS",
+            "message": f"Retried {len(retry_assets)} macros, {still_incomplete} still incomplete",
+            "still_incomplete": still_incomplete
+        }
 
     except Exception as e:
         tb = traceback.format_exc()
         return {"status": "FAILED", "error": str(e), "traceback": tb}
-

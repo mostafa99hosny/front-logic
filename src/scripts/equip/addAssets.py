@@ -10,60 +10,69 @@ db = client["projectForever"]
 from formFiller import wait_for_element, fill_assets_via_macro_urls
 from macrosFetcher import get_macros, get_macros_from_page, get_macro_pages_num
 
-async def check_incomplete_macros(browser, report_id, browsers_num=3):
+async def check_incomplete_macros(browser, report_id):
     try:
-        print("Fetching assets for report ID:", report_id)
-        assets = await db.assetdatas.find({"report_id": report_id}).to_list(None)
-        print("assets:", assets)
-        if not assets:
-            return {"status": "FAILED", "error": "No assets found in DB"}
+        print(f"[CHECK] Starting incomplete macro check for report {report_id}")
+        base_url = f"https://qima.taqeem.sa/report/{report_id}"
 
-        pages_num, _ = await get_macro_pages_num(browser, report_id)
-        if pages_num == 0:
-            return {"status": "SUCCESS", "macro_count": 0, "message": "No macros to check"}
+        page = await browser.get(base_url)
+        await asyncio.sleep(1)
 
-        macros_urls = []
+        incomplete_ids = []
 
-        async def fetch_macros_from_page(page_no):
-            page = await browser.get(f"https://qima.taqeem.sa/report/{report_id}?page={page_no}")
-            await asyncio.sleep(0.5)
-            page_macros = await get_macros_from_page(page)
-            macros_urls.extend(page_macros)
+        while True:
+            rows = await page.query_selector_all("#m-table tbody tr")
 
-        tasks = [fetch_macros_from_page(page_no) for page_no in range(1, pages_num + 1)]
-        await asyncio.gather(*tasks)
-        macros_urls = list(set(macros_urls)) 
+            for row in rows:
+                status_cell = await row.query_selector("td:nth-child(6)")
+                status_text = (await status_cell.inner_text()).strip() if status_cell else ""
 
-        incomplete_count = 0
+                id_cell = await row.query_selector("td:nth-child(1) a")
+                macro_id = (await id_cell.inner_text()).strip() if id_cell else None
 
-        for url in macros_urls:
-            macro_id = url.rstrip("/").split("/")[-2].strip()
-            print("Macro ID to check:", macro_id)
-            show_url = url.replace("edit", "show")
-            page = await browser.get(show_url)
-            await asyncio.sleep(0.5)
-            html_content = await page.get_content()
-            if html_content and "غير مكتملة" in html_content:
-                print("Macro is incomplete:", macro_id)
-                incomplete_count += 1
-                await db.assetdatas.update_one(
-                    {"id": int(macro_id)},
-                    {"$set": {"submitState": 0}}
-                )
-            else:
-                print("Macro is complete:", macro_id)
-                result = await db.assetdatas.update_one(
-                    {"id": int(macro_id)},
-                    {"$set": {"submitState": 1}}
-                )
-                print("Matched:", result.matched_count, "Modified:", result.modified_count)
+                if not macro_id:
+                    continue
 
-        return {"status": "SUCCESS", "macro_count": incomplete_count}
+                if "غير مكتملة" in status_text:
+                    print(f"[INCOMPLETE] Macro {macro_id}")
+                    incomplete_ids.append(int(macro_id))
+                    await db.assetdatas.update_one(
+                        {"id": int(macro_id)},
+                        {"$set": {"submitState": 0, "report_id": report_id}}
+                    )
+                else:
+                    print(f"[COMPLETE] Macro {macro_id}")
+                    await db.assetdatas.update_one(
+                        {"id": int(macro_id)},
+                        {"$set": {"submitState": 1, "report_id": report_id}}
+                    )
+
+            next_btn = await page.query_selector("#m-table_next")
+            if next_btn:
+                classes = await next_btn.get_attribute("class") or ""
+                if "disabled" not in classes:
+                    await next_btn.click()
+                    await asyncio.sleep(1)
+                    continue
+
+            alt_btn = await page.query_selector('//*[@id="collapsedFive2"]/div/nav/ul/li[5]/a')
+            if alt_btn:
+                classes = await alt_btn.get_attribute("class") or ""
+                if "disabled" not in classes:
+                    await alt_btn.click()
+                    await asyncio.sleep(1)
+                    continue
+
+            print("[CHECK] No next page, stopping.")
+            break
+
+        return {"status": "SUCCESS", "incomplete_ids": incomplete_ids, "macro_count": len(incomplete_ids)}
 
     except Exception as e:
         tb = traceback.format_exc()
-        print("traceback:", tb)
+        print("[CHECK] Error:", tb)
         return {"status": "FAILED", "error": str(e), "traceback": tb}
+
     
 
 async def check_incomplete_macros_after_creation(browser, record_id, browsers_num=3):
