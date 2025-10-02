@@ -10,70 +10,88 @@ db = client["projectForever"]
 from formFiller import wait_for_element, fill_assets_via_macro_urls
 from macrosFetcher import get_macros, get_macros_from_page, get_macro_pages_num
 
-async def check_incomplete_macros(browser, report_id):
+async def check_incomplete_macros(browser, record_id):
     try:
-        print(f"[CHECK] Starting incomplete macro check for report {report_id}")
-        base_url = f"https://qima.taqeem.sa/report/{report_id}"
+        print(f"[CHECK] Starting incomplete macro check for report {record_id}")
 
+        # First, fetch halfreport to map macro IDs
+        report = await db.halfreports.find_one({"_id": ObjectId(record_id)})
+        if not report:
+            return {"status": "FAILED", "error": f"Report {record_id} not found in halfreports"}
+
+        report_id = report.get("report_id")
+        if not report_id:
+            return {"status": "FAILED", "error": f"No report_id found for {record_id}"}
+
+        base_url = f"https://qima.taqeem.sa/report/{report_id}"
         page = await browser.get(base_url)
         await asyncio.sleep(1)
 
         incomplete_ids = []
 
+        # Outer loop = report pages
         while True:
-            rows = await page.query_selector_all("#m-table tbody tr")
+            # Inner loop = table sub-pages
+            while True:
+                await wait_for_element(page, "#m-table", timeout=5)
+                rows = await page.query_selector_all("#m-table tbody tr")
 
-            for row in rows:
-                status_cell = await row.query_selector("td:nth-child(6)")
-                status_text = (await status_cell.inner_text()).strip() if status_cell else ""
+                for row in rows:
+                    status_cell = await row.query_selector("td:nth-child(6)")
+                    status_text = (status_cell.text).strip() if status_cell else ""
 
-                id_cell = await row.query_selector("td:nth-child(1) a")
-                macro_id = (await id_cell.inner_text()).strip() if id_cell else None
+                    id_cell = await row.query_selector("td:nth-child(1) a")
+                    macro_id = (id_cell.text).strip() if id_cell else None
 
-                if not macro_id:
-                    continue
+                    if not macro_id:
+                        continue
 
-                if "غير مكتملة" in status_text:
-                    print(f"[INCOMPLETE] Macro {macro_id}")
-                    incomplete_ids.append(int(macro_id))
-                    await db.assetdatas.update_one(
-                        {"id": int(macro_id)},
-                        {"$set": {"submitState": 0, "report_id": report_id}}
-                    )
-                else:
-                    print(f"[COMPLETE] Macro {macro_id}")
-                    await db.assetdatas.update_one(
-                        {"id": int(macro_id)},
-                        {"$set": {"submitState": 1, "report_id": report_id}}
+                    submit_state = 0 if "غير مكتملة" in status_text else 1
+
+                    await db.halfreports.update_one(
+                        {"_id": ObjectId(record_id), "asset_data.id": int(macro_id)},
+                        {"$set": {"asset_data.$.submitState": submit_state}}
                     )
 
-            next_btn = await page.query_selector("#m-table_next")
-            if next_btn:
-                classes = await next_btn.get_attribute("class") or ""
-                if "disabled" not in classes:
-                    await next_btn.click()
-                    await asyncio.sleep(1)
-                    continue
+                    if submit_state == 0:
+                        print(f"[INCOMPLETE] Macro {macro_id}")
+                        incomplete_ids.append(int(macro_id))
 
-            alt_btn = await page.query_selector('//*[@id="collapsedFive2"]/div/nav/ul/li[5]/a')
+                # Try next sub-page
+                next_btn = await wait_for_element(page, "#m-table_next", timeout=5)
+                if next_btn:
+                    classes = next_btn.attrs.get("class_") or ""
+                    if "disabled" not in classes:
+                        await next_btn.click()
+                        await asyncio.sleep(1)
+                        continue
+                # no more sub-pages
+                break
+
+            # Try next outer page
+            alt_btn_list = await page.xpath('/html/body/div/div[5]/div[2]/div/div[8]/div/div/div/nav/ul/li[5]/a')
+            alt_btn = alt_btn_list[0] if alt_btn_list else None
             if alt_btn:
-                classes = await alt_btn.get_attribute("class") or ""
+                classes = alt_btn.attrs.get("class_") or ""
                 if "disabled" not in classes:
                     await alt_btn.click()
                     await asyncio.sleep(1)
                     continue
 
+            # no more outer pages
             print("[CHECK] No next page, stopping.")
             break
 
-        return {"status": "SUCCESS", "incomplete_ids": incomplete_ids, "macro_count": len(incomplete_ids)}
+        return {
+            "status": "SUCCESS",
+            "incomplete_ids": incomplete_ids,
+            "macro_count": len(incomplete_ids)
+        }
 
     except Exception as e:
         tb = traceback.format_exc()
         print("[CHECK] Error:", tb)
         return {"status": "FAILED", "error": str(e), "traceback": tb}
-
-    
 
 async def check_incomplete_macros_after_creation(browser, record_id, browsers_num=3):
     try:

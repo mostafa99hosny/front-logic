@@ -657,37 +657,15 @@ async def runFormFill2(browser, record_id, tabs_num=3):
                 checker_result = await check_incomplete_macros_after_creation(browser, record_id, browsers_num=tabs_num)
                 results.append({"status":"CHECKER_RESULT", "recordId":str(record["_id"]), "result":checker_result})
 
+                if checker_result["macro_count"] > 0:
+                    retryMacros(browser, record_id, tabs_num=tabs_num)
+                
+
         return {"status":"SUCCESS","results":results}
 
     except Exception as e:
         tb = traceback.format_exc() 
         return {"status":"FAILED","error":str(e),"traceback":tb}
-    
-async def runCheckMacros(browser, record_id, tabs_num=3):
-    try:
-        if not ObjectId.is_valid(record_id):
-            return {"status": "FAILED", "error": "Invalid record_id"}
-        
-        report_id = await db.halfreports.find_one({"_id": ObjectId(record_id)}).get("report_id")
-        if not report_id:
-            return {"status": "FAILED", "error": "No report_id found"}
-
-        check_result = await check_incomplete_macros(browser, report_id)
-
-        return {
-            "status": "CHECKER_RESULT",
-            "recordId": str(record_id),
-            "result": check_result
-        }
-
-    except Exception as e:
-        tb = traceback.format_exc()
-        return {
-            "status": "FAILED",
-            "error": str(e),
-            "traceback": tb
-        }
-
     
 async def retryMacros(browser, record_id, tabs_num=3):
     try:
@@ -766,3 +744,23 @@ async def retryMacros(browser, record_id, tabs_num=3):
     except Exception as e:
         tb = traceback.format_exc()
         return {"status": "FAILED", "error": str(e), "traceback": tb}
+    
+    
+async def runCheckMacros(browser, record_id, tabs_num=3):
+    try:
+        if not ObjectId.is_valid(record_id): return {"status": "FAILED", "error": "Invalid record_id"}
+    
+        check_result = await check_incomplete_macros(browser, record_id)
+        return {
+            "status": "SUCCESS",
+            "recordId": str(record_id),
+            "result": check_result
+        }
+
+    except Exception as e:
+        tb = traceback.format_exc()
+        return {
+            "status": "FAILED",
+            "error": str(e),
+            "traceback": tb
+        }
