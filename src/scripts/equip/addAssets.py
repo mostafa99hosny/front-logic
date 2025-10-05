@@ -69,7 +69,7 @@ async def check_incomplete_macros(browser, record_id):
                 break
 
             # Try next outer page
-            alt_btn_list = await page.xpath('/html/body/div/div[5]/div[2]/div/div[8]/div/div/div/nav/ul/li[5]/a')
+            alt_btn_list = await page.xpath('//ul[@class="pagination"]/li[last()]/a')
             alt_btn = alt_btn_list[0] if alt_btn_list else None
             if alt_btn:
                 classes = alt_btn.attrs.get("class_") or ""

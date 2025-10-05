@@ -12,6 +12,9 @@ const {
   getAssetsByUserId, 
   checkAssets,
   checkMacros,
+  pause,
+  stop,
+  resume,
   retryMacros,
   getHalfReportsByUserId,
   reportDataExtraction
@@ -53,9 +56,12 @@ scriptRouter.post('/equip/fillForm2', authMiddleware, fillReportForm2);
 scriptRouter.get('/equip/assets', authMiddleware, getAssetsByUserId);
 scriptRouter.get('/equip/reports', authMiddleware, getHalfReportsByUserId);
 
-// scriptRouter.post('/equip/check', authMiddleware, checkAssets);
 scriptRouter.post('/equip/check', authMiddleware, checkMacros);
 scriptRouter.post('/equip/retry', authMiddleware, retryMacros);
+
+scriptRouter.post('/equip/pause', authMiddleware, pause);
+scriptRouter.post('/equip/resume', authMiddleware, resume);
+scriptRouter.post('/equip/stop', authMiddleware, stop);
 
 scriptRouter.post(
   '/equip/extractData',

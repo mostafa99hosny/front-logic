@@ -1,55 +1,69 @@
-import asyncio
+import asyncio, json, traceback
 from browser import closeBrowser, wait_for_element, set_page, get_page
 from navigation import post_login_navigation
 
-async def startLogin(page, email, password):
+async def startLogin(page, email, password, record_id=None):
     try:
         email_input = await wait_for_element(page, "#username", 30)
         if not email_input:
-            await closeBrowser()
-            return {"status": "FAILED", "error": "Email input not found", "recoverable": False}
+            msg = {"status": "FAILED", "recordId": record_id, "error": "Email input not found"}
+            print(json.dumps(msg), flush=True)
+            return msg
 
         await email_input.send_keys(email)
 
         password_input = await wait_for_element(page, "input[type='password']", 30)
         if not password_input:
-            await closeBrowser()
-            return {"status": "FAILED", "error": "Password input not found", "recoverable": False}
+            msg = {"status": "FAILED", "recordId": record_id, "error": "Password input not found"}
+            print(json.dumps(msg), flush=True)
+            return msg
 
         await password_input.send_keys(password)
 
         login_btn = await wait_for_element(page, "#kc-login", 30)
         if not login_btn:
-            await closeBrowser()
-            return {"status": "FAILED", "error": "Login button not found", "recoverable": False}
+            msg = {"status": "FAILED", "recordId": record_id, "error": "Login button not found"}
+            print(json.dumps(msg), flush=True)
+            return msg
 
         await login_btn.click()
         await asyncio.sleep(5)
 
         otp_field = await wait_for_element(page, "#otp, input[type='tel'], input[name='otp'], #emailCode, #verificationCode", 15)
         if otp_field:
-            return {"status": "OTP_REQUIRED", "recoverable": True}
+            msg = {"status": "OTP_REQUIRED", "recordId": record_id}
+            print(json.dumps(msg), flush=True)
+            return msg
 
         dashboard = await wait_for_element(page, "#dashboard", 10)
         if dashboard:
-            return {"status": "LOGIN_SUCCESS", "recoverable": True}
+            msg = {"status": "LOGIN_SUCCESS", "recordId": record_id}
+            print(json.dumps(msg), flush=True)
+            return msg
 
-        await closeBrowser()
-        return {"status": "FAILED", "error": "Unknown login state", "recoverable": False}
+        msg = {"status": "FAILED", "recordId": record_id, "error": "Unknown login state"}
+        print(json.dumps(msg), flush=True)
+        return msg
 
     except Exception as e:
-        await closeBrowser()
-        return {"status": "FAILED", "error": str(e), "recoverable": False}
+        tb = traceback.format_exc()
+        msg = {"status": "FAILED", "recordId": record_id, "error": str(e), "traceback": tb}
+        print(json.dumps(msg), flush=True)
+        return msg
 
-async def submitOtp(page, otp):
+async def submitOtp(page, otp, record_id=None):
     if not page:
-        return {"status": "FAILED", "error": "No login session", "recoverable": False}
+        msg = {"status": "FAILED", "recordId": record_id, "error": "No login session"}
+        print(json.dumps(msg), flush=True)
+        return msg
 
     try:
         otp_input = await wait_for_element(page, "#otp, input[type='tel'], input[name='otp'], #emailCode, #verificationCode", 30)
         if not otp_input:
             await closeBrowser()
-            return {"status": "FAILED", "error": "OTP input not found", "recoverable": False}
+            msg = {"status": "FAILED", "recordId": record_id, "error": "OTP input not found"}
+            print(json.dumps(msg), flush=True)
+            return msg
 
         await otp_input.click()
         await otp_input.send_keys(otp)
@@ -70,22 +84,34 @@ async def submitOtp(page, otp):
 
         if not verify_btn:
             await closeBrowser()
-            return {"status": "FAILED", "error": "Verify button not found", "recoverable": False}
+            msg = {"status": "FAILED", "recordId": record_id, "error": "Verify button not found"}
+            print(json.dumps(msg), flush=True)
+            return msg
 
         await verify_btn.click()
         await asyncio.sleep(1)
 
         nav_result = await post_login_navigation(page)
         if nav_result["status"] == "SUCCESS":
-            return {"status": "SUCCESS", "recoverable": True}
+            msg = {"status": "SUCCESS", "recordId": record_id}
+            print(json.dumps(msg), flush=True)
+            return msg
 
         dashboard = await wait_for_element(page, "#dashboard, .dashboard, .welcome, [class*='success']", 15)
         if dashboard:
-            return {"status": "SUCCESS", "warning": "Navigation skipped (dashboard found)", "recoverable": True}
+            msg = {"status": "SUCCESS", "recordId": record_id, "warning": "Navigation skipped (dashboard found)"}
+            print(json.dumps(msg), flush=True)
+            return msg
 
         await closeBrowser()
-        return {**nav_result, "recoverable": False}
+        msg = {"status": "FAILED", "recordId": record_id, **nav_result}
+        print(json.dumps(msg), flush=True)
+        return msg
 
     except Exception as e:
         await closeBrowser()
-        return {"status": "FAILED", "error": str(e), "recoverable": False}
+        tb = traceback.format_exc()
+        msg = {"status": "FAILED", "recordId": record_id, "error": str(e), "traceback": tb}
+        print(json.dumps(msg), flush=True)
+        return msg
+
