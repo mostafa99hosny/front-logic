@@ -2,6 +2,7 @@ import asyncio
 import time
 import traceback
 import json
+import sys
 from datetime import datetime
 
 from bson import ObjectId
@@ -13,6 +14,18 @@ from addAssets import check_incomplete_macros_after_creation, check_incomplete_m
 MONGO_URI="mongodb+srv://test:JUL3OvyCSLVjSixj@assetval.pu3bqyr.mongodb.net/projectForever"
 client = AsyncIOMotorClient(MONGO_URI)
 db = client["projectForever"]
+
+def emit_progress(status, message, reportId, **kwargs):
+    """Emit progress updates that Node.js will forward to Socket.IO clients"""
+    progress_data = {
+        "type": "PROGRESS",
+        "status": status,
+        "message": message,
+        "reportId": reportId,
+        "timestamp": datetime.utcnow().isoformat(),
+        **kwargs
+    }
+    print(json.dumps(progress_data), flush=True)
 
 async def wait_for_element(page, selector, timeout=30, check_interval=0.5):
     start_time = time.time()
@@ -99,11 +112,10 @@ async def set_location(page, country_name, region_name, city_name):
         await set_field("#city", city_code)
         await asyncio.sleep(0.5)
 
-        print(f"Location set → 1 / {region_code} / {city_code}")
         return True
 
     except Exception as e:
-        print(f"Location injection failed: {e}")
+        print(f"Location injection failed: {e}", file=sys.stderr)
         return False
 
 async def bulk_inject_inputs(page, record, field_map, field_types):
@@ -123,7 +135,7 @@ async def bulk_inject_inputs(page, record, field_map, field_types):
                 try:
                     datetime.strptime(value, "%Y-%m-%d")
                 except ValueError:
-                    print(f"[WARNING] Invalid date format for {key}: {value}")
+                    print(f"[WARNING] Invalid date format for {key}: {value}", file=sys.stderr)
                     continue
 
         jsdata[selector] = {"type": field_type, "value": value}
@@ -184,9 +196,8 @@ async def bulk_inject_inputs(page, record, field_map, field_types):
 
     await page.evaluate(js)
 
-async def fill_form(page, record, field_map, field_types, is_last_step=False, retries=0, max_retries=2, skip_special_fields=False, control_state=None):
+async def fill_form(page, record, field_map, field_types, is_last_step=False, retries=0, max_retries=2, skip_special_fields=False, control_state=None, report_id=None):
     try:
-        # Import here to access shared state
         from worker_equip import check_control
         if control_state:
             await check_control(control_state)
@@ -222,7 +233,6 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False, re
         
         end_time = time.time()
         elapsed_time = end_time - start_time
-        print(f"[FORM] filled in {elapsed_time:.2f} seconds")
 
         if not is_last_step:
             continue_btn = await wait_for_element(page, "input[name='continue']", timeout=10)
@@ -232,7 +242,7 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False, re
                 error_div = await wait_for_element(page, "div.alert.alert-danger", timeout=5)
                 if error_div and retries < max_retries:
                     await asyncio.sleep(1)
-                    return await fill_form(page, record, field_map, field_types, is_last_step, retries+1, max_retries, skip_special_fields, control_state)
+                    return await fill_form(page, record, field_map, field_types, is_last_step, retries+1, max_retries, skip_special_fields, control_state, report_id)
         else:
             save_btn = await wait_for_element(page, "input[type='submit']", timeout=10)
             if save_btn:
@@ -264,7 +274,7 @@ def calculate_tab_batches(total_assets: int, max_tabs: int, batch_size: int = 10
         result.append(size)
     return result
 
-async def handle_macros_multi(browser, record, tab_nums=3, batch_size=10, control_state=None):
+async def handle_macros_multi(browser, record, tab_nums=3, batch_size=10, control_state=None, report_id=None):
     from worker_equip import check_control
     
     macros = record.get("asset_data", [])
@@ -275,8 +285,10 @@ async def handle_macros_multi(browser, record, tab_nums=3, batch_size=10, contro
     if control_state:
         await check_control(control_state)
 
+    emit_progress("MACRO_PROCESSING", f"Processing {total_assets} assets across {tab_nums} tabs", report_id, 
+                  total=total_assets, current=0)
+
     distribution = calculate_tab_batches(total_assets, tab_nums, batch_size)
-    print(f"[MACRO DISTRIBUTION] total={total_assets}, tabs={len(distribution)}, split={distribution}")
 
     main_page = browser.tabs[0]  
     current_url = await main_page.evaluate("window.location.href")
@@ -294,7 +306,10 @@ async def handle_macros_multi(browser, record, tab_nums=3, batch_size=10, contro
                 break
             await asyncio.sleep(0.5)
 
+    completed = 0
+
     async def process_assets(page, start_index, count):
+        nonlocal completed
         end_index = start_index + count
         subset = macros[start_index:end_index]
         for i in range(0, len(subset), batch_size):
@@ -313,15 +328,22 @@ async def handle_macros_multi(browser, record, tab_nums=3, batch_size=10, contro
                 form_steps[1]["field_types"],
                 is_last_step=True,
                 skip_special_fields=True,
-                control_state=control_state
+                control_state=control_state,
+                report_id=report_id
             )
+
+            completed += len(chunk)
+            emit_progress("MACRO_PROCESSING", f"Processed batch {start_index+i}–{start_index+i+len(chunk)}", 
+                         report_id, total=total_assets, current=completed, 
+                         percentage=round((completed/total_assets)*100, 2))
 
             if isinstance(result, dict):
                 if result.get("status") == "FAILED":
-                    print(f"[ERROR] Tab failed for batch {start_index+i}–{start_index+i+len(chunk)}: {result}")
+                    emit_progress("MACRO_ERROR", f"Failed batch {start_index+i}–{start_index+i+len(chunk)}", 
+                                report_id, error=result.get("error"))
                     return result
                 elif result.get("status") == "SAVED":
-                    print(f"[SUCCESS] Save button clicked for batch {start_index+i}–{start_index+i+len(chunk)}")
+                    pass
 
             if i + batch_size < len(subset):
                 await page.get(current_url)
@@ -341,6 +363,9 @@ async def handle_macros_multi(browser, record, tab_nums=3, batch_size=10, contro
     for p in pages[1:]:
         await p.close()
 
+    emit_progress("MACRO_COMPLETE", f"Completed processing {total_assets} assets", report_id, 
+                  total=total_assets, current=completed)
+
     return True
 
 def merge_asset_with_parent(asset, parent):
@@ -359,17 +384,18 @@ async def get_first_macro_id(page):
     link = await tds[0].query_selector("a") if tds else None
     return int(link.text.strip()) if link else None
 
-async def fill_macro_form(page, macro_id, macro_data, field_map, field_types, control_state=None):
+async def fill_macro_form(page, macro_id, macro_data, field_map, field_types, control_state=None, report_id=None):
     await page.get(f"https://qima.taqeem.sa/report/macro/{macro_id}/edit")
     await asyncio.sleep(0.5)
     try:
-        result = await fill_form(page, macro_data, field_map, field_types, is_last_step=True, skip_special_fields=True, control_state=control_state)
+        result = await fill_form(page, macro_data, field_map, field_types, is_last_step=True, 
+                                skip_special_fields=True, control_state=control_state, report_id=report_id)
         return result
     except Exception as e:
-        print(f"Filling macro {macro_id} failed: {e}")
+        print(f"Filling macro {macro_id} failed: {e}", file=sys.stderr)
         return {"status": "FAILED", "error": str(e)}
 
-async def handle_macro_edits(browser, record, tabs_num=3, control_state=None):
+async def handle_macro_edits(browser, record, tabs_num=3, control_state=None, report_id=None):
     from worker_equip import check_control
     
     asset_data = record.get("asset_data", [])
@@ -377,6 +403,9 @@ async def handle_macro_edits(browser, record, tabs_num=3, control_state=None):
 
     if control_state:
         await check_control(control_state)
+
+    emit_progress("MACRO_EDIT", f"Editing {len(asset_data)} macros", report_id, 
+                  total=len(asset_data), current=0)
 
     main_page = browser.tabs[0]
     first_macro_id = await get_first_macro_id(main_page)
@@ -386,7 +415,10 @@ async def handle_macro_edits(browser, record, tabs_num=3, control_state=None):
     chunks = balanced_chunks(asset_data, tabs_num)
     pages = [main_page] + [await browser.get("", new_tab=True) for _ in range(tabs_num - 1)]
 
+    completed = 0
+
     async def process_chunk(chunk, page, offset):
+        nonlocal completed
         for idx, macro in enumerate(chunk):
             if control_state:
                 await check_control(control_state)
@@ -399,9 +431,8 @@ async def handle_macro_edits(browser, record, tabs_num=3, control_state=None):
                     {"_id": record["_id"]},
                     {"$set": {f"asset_data.{element_index}.id": int(macro_id)}}
                 )
-                print(f"[DB PATCH] index {element_index} -> macro_id {macro_id}")
             except Exception as e:
-                print(f"[DB PATCH ERROR] {e}")
+                print(f"[DB PATCH ERROR] {e}", file=sys.stderr)
             
             try:
                 macro = merge_asset_with_parent(macro, record)
@@ -411,13 +442,24 @@ async def handle_macro_edits(browser, record, tabs_num=3, control_state=None):
                     macro,
                     macro_form_config["field_map"],
                     macro_form_config["field_types"],
-                    control_state
+                    control_state,
+                    report_id
                 )
+                
+                completed += 1
+                emit_progress("MACRO_EDIT", f"Edited macro {macro_id}", report_id, 
+                            total=len(asset_data), current=completed, 
+                            percentage=round((completed/len(asset_data))*100, 2))
             except Exception as e:
-                print(f"Filling macro {macro_id} failed: {e}")
+                emit_progress("MACRO_EDIT_ERROR", f"Failed to edit macro {macro_id}", report_id, 
+                            error=str(e), macro_id=macro_id)
 
     tasks = [process_chunk(chunk, page, sum(len(c) for c in chunks[:i])) for i, (page, chunk) in enumerate(zip(pages, chunks))]
     await asyncio.gather(*tasks)
+    
+    emit_progress("MACRO_EDIT_COMPLETE", f"Completed editing {len(asset_data)} macros", report_id, 
+                  total=len(asset_data), current=completed)
+    
     return True
 
 def balanced_chunks(lst, n):
@@ -437,6 +479,8 @@ async def runFormFill2(browser, record_id, tabs_num=3, control_state=None):
         if not ObjectId.is_valid(record_id):
             return {"status":"FAILED","error":"Invalid record_id"}
         
+        emit_progress("FETCHING_RECORD", "Fetching report data from database", record_id)
+        
         record = await db.halfreports.find_one({"_id": ObjectId(record_id)})
         if not record: 
             return {"status":"FAILED","error":"Record not found"}
@@ -444,6 +488,7 @@ async def runFormFill2(browser, record_id, tabs_num=3, control_state=None):
         results=[]
         record["number_of_macros"] = str(len(record.get("asset_data",[])))
 
+        emit_progress("NAVIGATING", "Navigating to form creation page", record_id)
         main_page = await browser.get("https://qima.taqeem.sa/report/create/4/487")
         await asyncio.sleep(1)
 
@@ -452,10 +497,15 @@ async def runFormFill2(browser, record_id, tabs_num=3, control_state=None):
                 await check_control(control_state)
             
             is_last = step_num == len(form_steps)
+            
+            emit_progress("STEP_STARTED", f"Starting step {step_num}/{len(form_steps)}", record_id, 
+                         step=step_num, total_steps=len(form_steps))
+            
             results.append({"status":"STEP_STARTED","step":step_num,"recordId":str(record["_id"])})
 
             if step_num == 2 and len(record.get("asset_data", [])) > 10:
-                result = await handle_macros_multi(browser, record, tab_nums=tabs_num, batch_size=10, control_state=control_state)
+                result = await handle_macros_multi(browser, record, tab_nums=tabs_num, batch_size=10, 
+                                                   control_state=control_state, report_id=record_id)
             else:
                 result = await fill_form(
                     main_page, 
@@ -464,10 +514,13 @@ async def runFormFill2(browser, record_id, tabs_num=3, control_state=None):
                     step_config["field_types"], 
                     is_last, 
                     skip_special_fields=True,
-                    control_state=control_state
+                    control_state=control_state,
+                    report_id=record_id
                 )
 
             if isinstance(result, dict) and result.get("status")=="FAILED":
+                emit_progress("STEP_FAILED", f"Step {step_num} failed", record_id, 
+                            step=step_num, error=result.get("error"))
                 results.append({
                     "status":"FAILED",
                     "step":step_num,
@@ -475,6 +528,9 @@ async def runFormFill2(browser, record_id, tabs_num=3, control_state=None):
                     "error":result.get("error")
                 })
                 return {"status":"FAILED","results":results}
+
+            emit_progress("STEP_COMPLETE", f"Completed step {step_num}/{len(form_steps)}", record_id, 
+                         step=step_num, total_steps=len(form_steps))
 
             if is_last:
                 main_url = await main_page.evaluate("window.location.href")
@@ -487,9 +543,11 @@ async def runFormFill2(browser, record_id, tabs_num=3, control_state=None):
                     {"_id": record["_id"]}, 
                     {"$set": {"report_id": form_id}}
                 )
-                print(f"[DB PATCH] report_id set: {form_id}")
+                
+                emit_progress("REPORT_SAVED", f"Report created with ID: {form_id}", record_id, form_id=form_id)
 
-                macro_result = await handle_macro_edits(browser, record, tabs_num=tabs_num, control_state=control_state)
+                macro_result = await handle_macro_edits(browser, record, tabs_num=tabs_num, 
+                                                       control_state=control_state, report_id=record_id)
                 if isinstance(macro_result, dict) and macro_result.get("status")=="FAILED":
                     results.append({"status":"FAILED","step":"macro_edit","recordId":str(record["_id"]),"error":macro_result.get("error")})
                     return {"status":"FAILED","results":results}
@@ -500,16 +558,20 @@ async def runFormFill2(browser, record_id, tabs_num=3, control_state=None):
                 for p in pages[1:]:
                     await p.close()
 
+                emit_progress("CHECKING", "Checking for incomplete macros", record_id)
                 checker_result = await check_incomplete_macros_after_creation(browser, record_id, browsers_num=tabs_num)
                 results.append({"status":"CHECKER_RESULT", "recordId":str(record["_id"]), "result":checker_result})
 
                 if checker_result["macro_count"] > 0:
+                    emit_progress("RETRYING", f"Retrying {checker_result['macro_count']} incomplete macros", record_id)
                     await retryMacros(browser, record_id, tabs_num=tabs_num, control_state=control_state)
 
+        emit_progress("COMPLETE", "Form filling completed successfully", record_id)
         return {"status":"SUCCESS","results":results}
 
     except Exception as e:
         tb = traceback.format_exc() 
+        emit_progress("FAILED", f"Form filling failed: {str(e)}", record_id, error=str(e))
         return {"status":"FAILED","error":str(e),"traceback":tb}
 
 async def retryMacros(browser, record_id, tabs_num=3, control_state=None):
@@ -526,31 +588,30 @@ async def retryMacros(browser, record_id, tabs_num=3, control_state=None):
         assets = report.get("asset_data", [])
         retry_assets = [(idx, a) for idx, a in enumerate(assets) if a.get("submitState") == 0]
         if not retry_assets:
+            emit_progress("RETRY_COMPLETE", "All macros already complete", record_id)
             return {"status": "SUCCESS", "message": "All macros complete"}
 
-        print(f"[RETRY] Retrying {len(retry_assets)} incomplete macros")
+        emit_progress("RETRY_STARTED", f"Retrying {len(retry_assets)} incomplete macros", record_id, 
+                     total=len(retry_assets), current=0)
 
-        # FIXED: Include main tab in pages list, then create additional tabs as needed
         num_tabs = min(tabs_num, len(retry_assets))
-        pages = [browser.tabs[0]]  # Start with main tab
+        pages = [browser.tabs[0]]
         
-        # Only create additional tabs if we need more than 1
         if num_tabs > 1:
             pages.extend([await browser.get("about:blank", new_tab=True) for _ in range(num_tabs - 1)])
         
-        print(f"[RETRY] Using {len(pages)} tabs for {len(retry_assets)} assets")
-        
-        # Distribute assets across tabs
         chunks = [retry_assets[i::len(pages)] for i in range(len(pages))]
+        
+        completed = 0
 
         async def process_chunk(page, assets_chunk):
+            nonlocal completed
             for idx, asset in assets_chunk:
                 if control_state:
                     await check_control(control_state)
                 
                 macro_id = asset.get("id")
                 if not macro_id:
-                    print(f"[RETRY] Skipping asset at index {idx} - no macro_id")
                     continue
 
                 try:
@@ -561,7 +622,8 @@ async def retryMacros(browser, record_id, tabs_num=3, control_state=None):
                         merged_asset, 
                         macro_form_config["field_map"], 
                         macro_form_config["field_types"], 
-                        control_state
+                        control_state,
+                        record_id
                     )
 
                     show_url = f"https://qima.taqeem.sa/report/macro/{macro_id}/show"
@@ -575,23 +637,30 @@ async def retryMacros(browser, record_id, tabs_num=3, control_state=None):
                         {"$set": {f"asset_data.{idx}.submitState": submit_state}}
                     )
 
-                    print(f"[RETRY {'SUCCESS' if submit_state == 1 else 'INCOMPLETE'}] macro_id={macro_id}, index={idx}")
-                except Exception as e:
-                    print(f"[RETRY ERROR] macro_id={macro_id}, index={idx}: {e}")
+                    completed += 1
+                    status = "SUCCESS" if submit_state == 1 else "INCOMPLETE"
+                    emit_progress("RETRY_PROGRESS", f"Retried macro {macro_id}: {status}", record_id, 
+                                total=len(retry_assets), current=completed, 
+                                percentage=round((completed/len(retry_assets))*100, 2),
+                                macro_id=macro_id, status=status)
 
-        # Process all chunks in parallel
+                except Exception as e:
+                    emit_progress("RETRY_ERROR", f"Failed to retry macro {macro_id}", record_id, 
+                                error=str(e), macro_id=macro_id)
+
         await asyncio.gather(*[process_chunk(p, chunk) for p, chunk in zip(pages, chunks)])
 
-        # Close only the additional tabs (not the main one)
         for p in pages[1:]:
             await p.close()
 
-        print(f"[RETRY] Closed {len(pages) - 1} additional tabs")
+        emit_progress("RETRY_COMPLETE", f"Completed retrying {len(retry_assets)} macros", record_id, 
+                     total=len(retry_assets), current=completed)
 
         return {"status": "SUCCESS", "message": f"Retried {len(retry_assets)} macros"}
 
     except Exception as e:
         tb = traceback.format_exc()
+        emit_progress("RETRY_FAILED", f"Retry failed: {str(e)}", record_id, error=str(e))
         return {"status": "FAILED", "error": str(e), "traceback": tb}
 
 async def runCheckMacros(browser, record_id, tabs_num=3):
@@ -599,7 +668,11 @@ async def runCheckMacros(browser, record_id, tabs_num=3):
         if not ObjectId.is_valid(record_id): 
             return {"status": "FAILED", "error": "Invalid record_id"}
     
+        emit_progress("CHECK_STARTED", "Checking incomplete macros", record_id)
         check_result = await check_incomplete_macros(browser, record_id)
+        emit_progress("CHECK_COMPLETE", f"Found {check_result.get('macro_count', 0)} incomplete macros", 
+                     record_id, result=check_result)
+        
         return {
             "status": "SUCCESS",
             "recordId": str(record_id),
@@ -608,6 +681,7 @@ async def runCheckMacros(browser, record_id, tabs_num=3):
 
     except Exception as e:
         tb = traceback.format_exc()
+        emit_progress("CHECK_FAILED", f"Check failed: {str(e)}", record_id, error=str(e))
         return {
             "status": "FAILED",
             "error": str(e),

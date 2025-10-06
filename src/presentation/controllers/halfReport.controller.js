@@ -11,6 +11,13 @@ let stdoutBuffer = "";
 const pending = new Map(); // {type: {resolve, reject, taskId?}}
 const activeTasks = new Map(); // {reportId: taskId} - track active tasks by reportId
 
+// Import io instance (will be set by server.js)
+let io = null;
+
+function setSocketIO(socketIO) {
+  io = socketIO;
+}
+
 // --- Ensure Python Worker ---
 function ensurePyWorker() {
   if (pyWorker && !pyWorker.killed) return pyWorker;
@@ -45,11 +52,35 @@ function ensurePyWorker() {
 
       console.log("[PY] Response:", parsed);
 
+      // Handle progress updates - emit to socket clients
+      if (parsed.type === "PROGRESS" && io) {
+        const reportId = parsed.reportId;
+        if (reportId) {
+          // Emit to room specific to this report
+          io.to(`report_${reportId}`).emit('form_fill_progress', {
+            reportId: reportId,
+            status: parsed.status,
+            message: parsed.message,
+            timestamp: parsed.timestamp,
+            data: {
+              step: parsed.step,
+              total_steps: parsed.total_steps,
+              total: parsed.total,
+              current: parsed.current,
+              percentage: parsed.percentage,
+              macro_id: parsed.macro_id,
+              form_id: parsed.form_id,
+              error: parsed.error
+            }
+          });
+        }
+        continue; // Don't process as regular response
+      }
+
       // Store taskId for reportId mapping when task starts
       if (parsed.status === "STARTED" && parsed.taskId && parsed.reportId) {
         activeTasks.set(parsed.reportId, parsed.taskId);
         console.log(`[TASK REGISTERED] reportId=${parsed.reportId}, taskId=${parsed.taskId}`);
-        // Don't resolve promise yet - wait for final status
         continue;
       }
 
@@ -63,6 +94,16 @@ function ensurePyWorker() {
         
         if (parsed.status === "STOPPED" && parsed.reportId) {
           activeTasks.delete(parsed.reportId);
+          
+          // Emit stop confirmation to socket
+          if (io) {
+            io.to(`report_${parsed.reportId}`).emit('form_fill_stopped', {
+              reportId: parsed.reportId,
+              status: 'STOPPED',
+              message: 'Form filling stopped by user',
+              timestamp: new Date().toISOString()
+            });
+          }
         }
         continue;
       }
@@ -79,6 +120,26 @@ function ensurePyWorker() {
         // Cleanup active task
         if (parsed.reportId) {
           activeTasks.delete(parsed.reportId);
+          
+          // Emit completion to socket
+          if (io) {
+            if (parsed.status === "SUCCESS") {
+              io.to(`report_${parsed.reportId}`).emit('form_fill_complete', {
+                reportId: parsed.reportId,
+                status: 'SUCCESS',
+                message: 'Form filling completed successfully',
+                results: parsed.results,
+                timestamp: new Date().toISOString()
+              });
+            } else if (parsed.status === "FAILED") {
+              io.to(`report_${parsed.reportId}`).emit('form_fill_error', {
+                reportId: parsed.reportId,
+                status: 'FAILED',
+                error: parsed.error,
+                timestamp: new Date().toISOString()
+              });
+            }
+          }
         }
       }
     }
@@ -165,7 +226,7 @@ const fillReportForm2 = async (req, res, next) => {
   if (isNaN(tabsNum) || tabsNum < 1) tabsNum = 3;
 
   try {
-    const response = await sendCommand({ action: "formFill2", reportId: id, tabsNum });
+    const response = await sendCommand({ action: "formFill2", reportId: id, tabsNum, socketMode: true });
     res.json(response);
   } catch (err) {
     console.error("[fillReportForm2] error:", err);
@@ -185,6 +246,17 @@ const pause = async (req, res, next) => {
       reportId: id,
       taskId 
     }, "control");
+    
+    // Emit pause event to socket
+    if (io) {
+      io.to(`report_${id}`).emit('form_fill_paused', {
+        reportId: id,
+        status: 'PAUSED',
+        message: 'Form filling paused',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
     res.json(response);
   } catch (err) {
     console.error("[pause] error:", err);
@@ -204,6 +276,17 @@ const resume = async (req, res, next) => {
       reportId: id,
       taskId 
     }, "control");
+    
+    // Emit resume event to socket
+    if (io) {
+      io.to(`report_${id}`).emit('form_fill_resumed', {
+        reportId: id,
+        status: 'RESUMED',
+        message: 'Form filling resumed',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
     res.json(response);
   } catch (err) {
     console.error("[resume] error:", err);
@@ -223,6 +306,7 @@ const stop = async (req, res, next) => {
       reportId: id,
       taskId 
     }, "control");
+    
     res.json(response);
   } catch (err) {
     console.error("[stop] error:", err);
@@ -250,7 +334,7 @@ const retryMacros = async (req, res, next) => {
   if (isNaN(tabsNum) || tabsNum < 1) tabsNum = 3;
 
   try {
-    const response = await sendCommand({ action: "retryMacros", recordId: id, tabsNum });
+    const response = await sendCommand({ action: "retryMacros", recordId: id, tabsNum, socketMode: true });
     res.json(response);
   } catch (err) {
     console.error("[retryMacros] error:", err);
@@ -404,4 +488,6 @@ module.exports = {
   stop,
   sendCommand,
   closeWorker,
+  setSocketIO,  // Export to allow server.js to inject io instance
+  activeTasks   // Export for debugging/monitoring
 };
