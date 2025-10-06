@@ -73,7 +73,12 @@ async def submitOtp(page, otp):
             return {"status": "FAILED", "error": "Verify button not found", "recoverable": False}
 
         await verify_btn.click()
-        await asyncio.sleep(1)
+
+        error_message = await wait_for_element(page, "#input-error-otp-code", timeout=5)
+        print("Looking for error message")
+        if error_message:
+            print("Error message found: ", error_message.text)
+            return {"status": "OTP_FAILED", "message": "Try Again", "recoverable": True}
 
         nav_result = await post_login_navigation(page)
         if nav_result["status"] == "SUCCESS":

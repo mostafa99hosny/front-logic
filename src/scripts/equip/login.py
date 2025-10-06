@@ -27,7 +27,9 @@ async def startLogin(page, email, password, record_id=None):
             return msg
 
         await login_btn.click()
-        await asyncio.sleep(5)
+        error_icon = await wait_for_element(page, ".pf-c-alert__icon", timeout=5)
+        if error_icon:
+            return {"status": "NOT_FOUND", "error": "User not found", "recoverable": True}
 
         otp_field = await wait_for_element(page, "#otp, input[type='tel'], input[name='otp'], #emailCode, #verificationCode", 15)
         if otp_field:
@@ -89,7 +91,12 @@ async def submitOtp(page, otp, record_id=None):
             return msg
 
         await verify_btn.click()
-        await asyncio.sleep(1)
+        await asyncio.sleep(3)
+        error_message = await wait_for_element(page, "#input-error-otp-code", timeout=1)
+        print("Looking for error message")
+        if error_message:
+            print("Error message found: ", error_message.text)
+            return {"status": "OTP_FAILED", "message": "Try Again", "recoverable": True}
 
         nav_result = await post_login_navigation(page)
         if nav_result["status"] == "SUCCESS":

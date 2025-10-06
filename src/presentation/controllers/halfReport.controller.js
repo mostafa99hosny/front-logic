@@ -61,7 +61,6 @@ function ensurePyWorker() {
           pending.delete("control");
         }
         
-        // Also cleanup active task if stopped
         if (parsed.status === "STOPPED" && parsed.reportId) {
           activeTasks.delete(parsed.reportId);
         }
@@ -69,7 +68,7 @@ function ensurePyWorker() {
       }
 
       // Task completion responses
-      const finalStatuses = ["SUCCESS", "FAILED", "CLOSED", "LOGIN_SUCCESS", "OTP_REQUIRED"];
+      const finalStatuses = ["SUCCESS", "FAILED", "CLOSED", "LOGIN_SUCCESS", "NOT_FOUND", "OTP_REQUIRED", "OTP_FAILED"];
       if (finalStatuses.includes(parsed.status)) {
         const handler = pending.get("task");
         if (handler) {
