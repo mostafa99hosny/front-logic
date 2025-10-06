@@ -50,9 +50,9 @@ const getAllTickets = async (req, res) => {
     let tickets;
     const adminEmail = "admin.tickets@gmail.com";
     if (req.user.email === adminEmail) {
-      tickets = await Ticket.find().sort({ createdAt: -1 });
+      tickets = await Ticket.find().populate('createdBy', 'firstName lastName').sort({ createdAt: -1 });
     } else {
-      tickets = await Ticket.find({ createdBy: req.user.userId }).sort({ createdAt: -1 });
+      tickets = await Ticket.find({ createdBy: req.user.userId }).populate('createdBy', 'firstName lastName').sort({ createdAt: -1 });
     }
     res.status(200).json({
       success: true,
@@ -70,7 +70,7 @@ const getAllTickets = async (req, res) => {
 // Get single ticket by ID
 const getTicketById = async (req, res) => {
   try {
-    const ticket = await Ticket.findById(req.params.id);
+    const ticket = await Ticket.findById(req.params.id).populate('createdBy', 'firstName lastName');
 
     if (!ticket) {
       return res.status(404).json({
@@ -87,6 +87,102 @@ const getTicketById = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch ticket',
+      error: error.message
+    });
+  }
+};
+
+// Update ticket status
+const updateTicketStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, priority, classification } = req.body;
+
+    const ticket = await Ticket.findById(id);
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Ticket not found' });
+    }
+
+    // Check if user is authorized (ticket creator or admin)
+    const adminEmail = "admin.tickets@gmail.com";
+    if (req.user.email !== adminEmail && ticket.createdBy.toString() !== req.user.userId) {
+      return res.status(403).json({ success: false, message: 'Unauthorized' });
+    }
+
+    // Users can change status to any value, admins can change any status
+    // No restrictions for users on status changes
+
+    // Update fields
+    if (status) ticket.status = status;
+    if (priority !== undefined) ticket.priority = priority;
+    if (classification) ticket.classification = classification;
+    ticket.updatedAt = new Date();
+
+    await ticket.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Ticket updated successfully',
+      ticket
+    });
+  } catch (error) {
+    console.error('Error updating ticket:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update ticket',
+      error: error.message
+    });
+  }
+};
+
+// Rate ticket
+const rateTicket = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rating, comment } = req.body;
+
+    const ticket = await Ticket.findById(id);
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Ticket not found' });
+    }
+
+    // Check if user is the ticket creator
+    if (ticket.createdBy.toString() !== req.user.userId) {
+      return res.status(403).json({ success: false, message: 'Unauthorized' });
+    }
+
+    // Check if ticket is closed
+    if (ticket.status !== 'closed') {
+      return res.status(400).json({ success: false, message: 'Can only rate closed tickets' });
+    }
+
+    // Check if already rated
+    if (ticket.rating) {
+      return res.status(400).json({ success: false, message: 'Ticket already rated' });
+    }
+
+    // Validate rating
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
+    }
+
+    ticket.rating = rating;
+    ticket.ratingComment = comment || '';
+    ticket.ratedAt = new Date();
+    ticket.updatedAt = new Date();
+
+    await ticket.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Ticket rated successfully',
+      ticket
+    });
+  } catch (error) {
+    console.error('Error rating ticket:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to rate ticket',
       error: error.message
     });
   }
@@ -123,5 +219,7 @@ module.exports = {
   createTicket,
   getAllTickets,
   getTicketById,
+  updateTicketStatus,
+  rateTicket,
   downloadAttachment
 };

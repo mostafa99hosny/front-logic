@@ -5,6 +5,8 @@ const {
   createTicket,
   getAllTickets,
   getTicketById,
+  updateTicketStatus,
+  rateTicket,
   downloadAttachment
 } = require('../controllers/ticket.controller');
 const authMiddleware = require('../../shared/middlewares/auth.middleware');
@@ -44,6 +46,8 @@ const upload = multer({
 router.post('/create', authMiddleware, upload.array('attachments', 5), createTicket);
 router.get('/', authMiddleware, getAllTickets);
 router.get('/:id', authMiddleware, getTicketById);
+router.put('/:id/status', authMiddleware, updateTicketStatus);
+router.post('/:id/rate', authMiddleware, rateTicket);
 
 // Download attachment
 router.get('/:ticketId/attachments/:filename', downloadAttachment);
