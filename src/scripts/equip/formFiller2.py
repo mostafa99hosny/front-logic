@@ -3,7 +3,7 @@ import time
 import traceback
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -484,6 +484,11 @@ async def runFormFill2(browser, record_id, tabs_num=3, control_state=None):
         record = await db.halfreports.find_one({"_id": ObjectId(record_id)})
         if not record: 
             return {"status":"FAILED","error":"Record not found"}
+        
+        await db.halfreports.update_one(
+            {"_id": record["_id"]},
+            {"$set": {"startSubmitTime": datetime.now(timezone.utc)}}
+        )
 
         results=[]
         record["number_of_macros"] = str(len(record.get("asset_data",[])))
@@ -566,12 +571,21 @@ async def runFormFill2(browser, record_id, tabs_num=3, control_state=None):
                     emit_progress("RETRYING", f"Retrying {checker_result['macro_count']} incomplete macros", record_id)
                     await retryMacros(browser, record_id, tabs_num=tabs_num, control_state=control_state)
 
+        await db.halfreports.update_one(
+            {"_id": record["_id"]},
+            {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
+        )
+
         emit_progress("COMPLETE", "Form filling completed successfully", record_id)
         return {"status":"SUCCESS","results":results}
 
     except Exception as e:
         tb = traceback.format_exc() 
         emit_progress("FAILED", f"Form filling failed: {str(e)}", record_id, error=str(e))
+        await db.halfreports.update_one(
+            {"_id": record["_id"]},
+            {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
+        )
         return {"status":"FAILED","error":str(e),"traceback":tb}
 
 async def retryMacros(browser, record_id, tabs_num=3, control_state=None):

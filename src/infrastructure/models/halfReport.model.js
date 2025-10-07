@@ -39,6 +39,9 @@ const halfReportSchema = new mongoose.Schema({
   country: { type: String, default: "المملكة العربية السعودية" },
   region: { type: String },
   city: { type: String },
+  
+  startSubmitTime: { type: Date },
+  endSubmitTime: { type: Date },
 
   asset_data: [{
     id: { type: String },
