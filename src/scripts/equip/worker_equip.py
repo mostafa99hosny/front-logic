@@ -177,8 +177,10 @@ async def command_handler():
                 }), flush=True)
         
         elif action == "close":
-            await closeBrowser()
-            print(json.dumps({"status": "CLOSED"}), flush=True)
+            if browser:
+                await closeBrowser()
+                print(json.dumps({"status": "CLOSED"}), flush=True)
+
             break
         
         else:
@@ -186,7 +188,6 @@ async def command_handler():
             asyncio.create_task(handle_action(cmd))
 
 async def handle_action(cmd):
-    """Handle non-control actions"""
     record_id = cmd.get("recordId")
     task_id = record_id
     

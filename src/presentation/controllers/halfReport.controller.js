@@ -471,6 +471,16 @@ const checkAssets = async (req, res, next) => {
   }
 };
 
+const closeBrowser = async (req, res, next) => {
+  try {
+    const response = await sendCommand({ action: "closeBrowser" });
+    res.json(response);
+  } catch (err) {
+    console.error("[closeBrowser] error:", err);
+    next(err instanceof AppError ? err : new AppError(String(err), 500));
+  }
+};
+
 module.exports = {
   loginOrOtp,
   fillHalfReportForm,

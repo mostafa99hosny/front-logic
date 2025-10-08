@@ -20,19 +20,14 @@ setSocketIO(io);
 
 const activeSessions = new Map(); 
 
-// Socket.io connection handling
-// Update the socket event handlers in server.js
-
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // Join a ticket room
   socket.on('join_ticket', (ticketId) => {
     socket.join(ticketId);
     console.log(`User ${socket.id} joined ticket ${ticketId}`);
   });
 
-  // Join multiple ticket rooms
   socket.on('join_tickets', (ticketIds) => {
     ticketIds.forEach(ticketId => {
       socket.join(ticketId);
@@ -40,7 +35,6 @@ io.on('connection', (socket) => {
     console.log(`User ${socket.id} joined tickets: ${ticketIds.join(', ')}`);
   });
 
-  // Handle sending message
   socket.on('send_message', (data) => {
     console.log('send_message received:', data);
     io.to(data.ticketId).emit('receive_message', { 
@@ -50,18 +44,13 @@ io.on('connection', (socket) => {
     console.log('Emitted receive_message to room:', data.ticketId);
   });
 
-  // ========== FORM FILLER SOCKET EVENTS ==========
-
-  // Start form filling process
   socket.on('start_form_fill', async (data) => {
-    const { reportId, tabsNum, userId, actionType = 'submit' } = data;
+    const { reportId, tabsNum, actionType = 'submit' } = data;
     console.log(`[SOCKET] start_form_fill: reportId=${reportId}, tabsNum=${tabsNum}, action=${actionType}`);
 
     try {
-      // Join report-specific room for progress updates
       socket.join(`report_${reportId}`);
 
-      // Create control state for pause/resume/stop
       const controlState = {
         paused: false,
         stopped: false,
@@ -69,7 +58,6 @@ io.on('connection', (socket) => {
         actionType
       };
 
-      // Store session
       activeSessions.set(reportId, {
         socket,
         controlState,
@@ -77,7 +65,6 @@ io.on('connection', (socket) => {
         actionType
       });
 
-      // Emit start acknowledgment
       socket.emit('form_fill_started', { 
         reportId, 
         status: 'STARTED',
@@ -86,7 +73,6 @@ io.on('connection', (socket) => {
 
       let response;
       
-      // Execute appropriate action based on type
       switch (actionType) {
         case 'submit':
           response = await sendCommand({ 
@@ -121,7 +107,6 @@ io.on('connection', (socket) => {
 
       console.log(`[SOCKET] ${actionType} response:`, response);
 
-      // Send completion event
       if (response.status === 'SUCCESS') {
         io.to(`report_${reportId}`).emit('form_fill_complete', {
           reportId,
@@ -155,7 +140,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Pause form filling
   socket.on('pause_form_fill', async (data) => {
     const { reportId } = data;
     console.log(`[SOCKET] pause_form_fill: reportId=${reportId}`);
@@ -194,7 +178,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Resume form filling
   socket.on('resume_form_fill', async (data) => {
     const { reportId } = data;
     console.log(`[SOCKET] resume_form_fill: reportId=${reportId}`);
@@ -233,7 +216,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Stop form filling
   socket.on('stop_form_fill', async (data) => {
     const { reportId } = data;
     console.log(`[SOCKET] stop_form_fill: reportId=${reportId}`);
@@ -273,7 +255,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Get active sessions
   socket.on('get_active_sessions', () => {
     const sessions = Array.from(activeSessions.entries()).map(([reportId, session]) => ({
       reportId,
@@ -288,7 +269,6 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
     
-    // Clean up any sessions associated with this socket
     for (const [reportId, session] of activeSessions.entries()) {
       if (session.socket.id === socket.id) {
         console.log(`[CLEANUP] Removing session for reportId=${reportId}`);
