@@ -5,11 +5,12 @@ const extractAssetData = require("../../application/taqeem/extractAssetData.uc.j
 const reportDataExtract = require("../../application/taqeem/reportDataExtract.uc.js");
 const { getAssetsByUserIdUC } = require("../../application/reports/getAssetsByUserId.uc.js");
 const { getHalfReportsByUserIdUC } = require("../../application/reports/getHalfReportsByUserId.uc.js");
+const { noBaseDataExtraction } = require("../../application/taqeem/noBaseDataExtraction.uc.js")
 
 let pyWorker = null;
 let stdoutBuffer = "";
-const pending = new Map(); // {type: {resolve, reject, taskId?}}
-const activeTasks = new Map(); // {reportId: taskId} - track active tasks by reportId
+const pending = new Map(); 
+const activeTasks = new Map(); 
 
 // Import io instance (will be set by server.js)
 let io = null;
@@ -420,11 +421,7 @@ const extractExistingReportData = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Excel file is required" });
     }
 
-    const result = await extractAssetData(excelFilePath, null, null, { 
-      mode: "assetData", 
-      reportId, 
-      userId 
-    });
+    const result = await noBaseDataExtraction(excelFilePath, reportId, userId)
     
     if (result.status !== "SUCCESS") {
       return res.status(400).json({
@@ -467,16 +464,6 @@ const checkAssets = async (req, res, next) => {
     res.json(response);
   } catch (err) {
     console.error("[checkAssets] error:", err);
-    next(err instanceof AppError ? err : new AppError(String(err), 500));
-  }
-};
-
-const closeBrowser = async (req, res, next) => {
-  try {
-    const response = await sendCommand({ action: "closeBrowser" });
-    res.json(response);
-  } catch (err) {
-    console.error("[closeBrowser] error:", err);
     next(err instanceof AppError ? err : new AppError(String(err), 500));
   }
 };

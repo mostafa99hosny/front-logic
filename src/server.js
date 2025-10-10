@@ -9,26 +9,106 @@ const Company = require('./infrastructure/models/company.model');
 
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
+
+// Enhanced Socket.IO configuration with better timeout settings
 const io = new Server(server, {
   cors: {
-    origin: "*", 
+    origin: "*",
     methods: ["GET", "POST"]
-  }
+  },
+  pingInterval: 20000,      // Reduced from 25s to 20s
+  pingTimeout: 10000,       // Increased from 5s to 10s for better tolerance
+  connectTimeout: 30000,    // Added connection timeout
+  maxHttpBufferSize: 1e6,
+  transports: ['websocket', 'polling'] // Explicit transport order
 });
 
 setSocketIO(io);
 
-const activeSessions = new Map(); 
+const activeSessions = new Map();
+const userSessions = new Map();
+
+// Enhanced cleanup function with better error handling
+async function performCleanupByUserId(userId) {
+  try {
+    console.log(`[BROWSER CLEANUP] Closing browser for user: ${userId}`);
+    
+    // Clean up active sessions for this user FIRST
+    const sessionsToDelete = [];
+    for (const [reportId, session] of activeSessions.entries()) {
+      if (session.userId === userId) {
+        sessionsToDelete.push(reportId);
+      }
+    }
+    
+    // Delete sessions outside the loop to avoid modification during iteration
+    sessionsToDelete.forEach(reportId => {
+      activeSessions.delete(reportId);
+      console.log(`[SESSION CLEANUP] Removed session for report ${reportId}`);
+    });
+    
+    // Then close the browser
+    await sendCommand({ action: "close", userId });
+    
+    // Remove user from tracking
+    userSessions.delete(userId);
+    
+    console.log(`[CLEANUP COMPLETE] User ${userId} fully cleaned up`);
+  } catch (error) {
+    console.error(`[CLEANUP ERROR] Failed to cleanup for user ${userId}:`, error);
+    // Even if cleanup fails, remove from tracking to prevent memory leaks
+    userSessions.delete(userId);
+  }
+}
+
+// Helper function to cancel user cleanup
+function cancelUserCleanup(userId) {
+  const userSession = userSessions.get(userId);
+  if (userSession && userSession.cleanupTimeout) {
+    clearTimeout(userSession.cleanupTimeout);
+    userSessions.delete(userId);
+    console.log(`[CLEANUP CANCELLED] User ${userId} reconnected successfully`);
+    return true;
+  }
+  return false;
+}
 
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  console.log('User connected:', socket.id, 'at', new Date().toISOString());
 
+  // Enhanced user identification with validation
+  socket.on('user_identified', (userId) => {
+    if (!userId || typeof userId !== 'string') {
+      console.warn(`[INVALID USER ID] Socket ${socket.id} provided invalid userId:`, userId);
+      return;
+    }
+    
+    socket.userId = userId;
+    console.log(`Socket ${socket.id} identified as user ${userId}`);
+    
+    // Cancel pending cleanup for this user
+    if (cancelUserCleanup(userId)) {
+      // Rejoin any active rooms for this user
+      for (const [reportId, session] of activeSessions.entries()) {
+        if (session.userId === userId) {
+          socket.join(`report_${reportId}`);
+          console.log(`[REJOINED] User ${userId} rejoined report room ${reportId}`);
+        }
+      }
+    }
+  });
+
+  // Existing event handlers (keep your current implementation)
   socket.on('join_ticket', (ticketId) => {
     socket.join(ticketId);
     console.log(`User ${socket.id} joined ticket ${ticketId}`);
   });
 
   socket.on('join_tickets', (ticketIds) => {
+    if (!Array.isArray(ticketIds)) {
+      console.warn(`[INVALID TICKETS] Socket ${socket.id} provided non-array ticketIds`);
+      return;
+    }
     ticketIds.forEach(ticketId => {
       socket.join(ticketId);
     });
@@ -37,19 +117,30 @@ io.on('connection', (socket) => {
 
   socket.on('send_message', (data) => {
     console.log('send_message received:', data);
-    io.to(data.ticketId).emit('receive_message', { 
-      ...data.message, 
-      ticketId: data.ticketId 
+    io.to(data.ticketId).emit('receive_message', {
+      ...data.message,
+      ticketId: data.ticketId
     });
     console.log('Emitted receive_message to room:', data.ticketId);
   });
 
+  // Enhanced start_form_fill with better user tracking
   socket.on('start_form_fill', async (data) => {
-    const { reportId, tabsNum, actionType = 'submit' } = data;
-    console.log(`[SOCKET] start_form_fill: reportId=${reportId}, tabsNum=${tabsNum}, action=${actionType}`);
+    const { reportId, tabsNum, actionType = 'submit', userId } = data;
+    console.log(`[SOCKET] start_form_fill: reportId=${reportId}, tabsNum=${tabsNum}, action=${actionType}, user=${userId}`);
 
     try {
+      // Validate required fields
+      if (!reportId) {
+        throw new Error('reportId is required');
+      }
+
       socket.join(`report_${reportId}`);
+      
+      // Store userId on socket if provided
+      if (userId && !socket.userId) {
+        socket.userId = userId;
+      }
 
       const controlState = {
         paused: false,
@@ -62,45 +153,49 @@ io.on('connection', (socket) => {
         socket,
         controlState,
         startedAt: new Date(),
+        actionType,
+        userId: socket.userId
+      });
+
+      socket.emit('form_fill_started', {
+        reportId,
+        status: 'STARTED',
         actionType
       });
 
-      socket.emit('form_fill_started', { 
-        reportId, 
-        status: 'STARTED',
-        actionType 
-      });
-
       let response;
-      
+
       switch (actionType) {
         case 'submit':
-          response = await sendCommand({ 
-            action: "formFill2", 
-            reportId, 
+          response = await sendCommand({
+            action: "formFill2",
+            reportId,
             tabsNum: tabsNum || 3,
-            socketMode: true 
+            socketMode: true,
+            userId: socket.userId
           });
           break;
-          
+
         case 'retry':
-          response = await sendCommand({ 
-            action: "retryMacros", 
-            recordId: reportId, 
+          response = await sendCommand({
+            action: "retryMacros",
+            recordId: reportId,
             tabsNum: tabsNum || 3,
-            socketMode: true 
+            socketMode: true,
+            userId: socket.userId
           });
           break;
-          
+
         case 'check':
-          response = await sendCommand({ 
-            action: "checkMacros", 
-            reportId, 
+          response = await sendCommand({
+            action: "checkMacros",
+            reportId,
             tabsNum: tabsNum || 3,
-            socketMode: true 
+            socketMode: true,
+            userId: socket.userId
           });
           break;
-          
+
         default:
           throw new Error(`Unknown action type: ${actionType}`);
       }
@@ -140,120 +235,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('pause_form_fill', async (data) => {
-    const { reportId } = data;
-    console.log(`[SOCKET] pause_form_fill: reportId=${reportId}`);
-
-    const session = activeSessions.get(reportId);
-    if (session) {
-      try {
-        const taskId = activeTasks.get(reportId);
-        
-        const response = await sendCommand({ 
-          action: "pause", 
-          reportId,
-          taskId 
-        }, "control");
-
-        session.controlState.paused = true;
-        socket.emit('form_fill_paused', { 
-          reportId, 
-          status: 'PAUSED',
-          actionType: session.actionType 
-        });
-      } catch (error) {
-        console.error(`[SOCKET ERROR] pause_form_fill:`, error);
-        socket.emit('form_fill_error', {
-          reportId,
-          status: 'FAILED',
-          error: error.message
-        });
-      }
-    } else {
-      socket.emit('form_fill_error', {
-        reportId,
-        status: 'FAILED',
-        error: 'No active session found'
-      });
-    }
-  });
-
-  socket.on('resume_form_fill', async (data) => {
-    const { reportId } = data;
-    console.log(`[SOCKET] resume_form_fill: reportId=${reportId}`);
-
-    const session = activeSessions.get(reportId);
-    if (session) {
-      try {
-        const taskId = activeTasks.get(reportId);
-        
-        const response = await sendCommand({ 
-          action: "resume", 
-          reportId,
-          taskId 
-        }, "control");
-
-        session.controlState.paused = false;
-        socket.emit('form_fill_resumed', { 
-          reportId, 
-          status: 'RESUMED',
-          actionType: session.actionType 
-        });
-      } catch (error) {
-        console.error(`[SOCKET ERROR] resume_form_fill:`, error);
-        socket.emit('form_fill_error', {
-          reportId,
-          status: 'FAILED',
-          error: error.message
-        });
-      }
-    } else {
-      socket.emit('form_fill_error', {
-        reportId,
-        status: 'FAILED',
-        error: 'No active session found'
-      });
-    }
-  });
-
-  socket.on('stop_form_fill', async (data) => {
-    const { reportId } = data;
-    console.log(`[SOCKET] stop_form_fill: reportId=${reportId}`);
-
-    const session = activeSessions.get(reportId);
-    if (session) {
-      try {
-        const taskId = activeTasks.get(reportId);
-        
-        const response = await sendCommand({ 
-          action: "stop", 
-          reportId,
-          taskId 
-        }, "control");
-
-        session.controlState.stopped = true;
-        socket.emit('form_fill_stopped', { 
-          reportId, 
-          status: 'STOPPED',
-          actionType: session.actionType 
-        });
-        activeSessions.delete(reportId);
-      } catch (error) {
-        console.error(`[SOCKET ERROR] stop_form_fill:`, error);
-        socket.emit('form_fill_error', {
-          reportId,
-          status: 'FAILED',
-          error: error.message
-        });
-      }
-    } else {
-      socket.emit('form_fill_error', {
-        reportId,
-        status: 'FAILED',
-        error: 'No active session found'
-      });
-    }
-  });
+  // Keep your existing pause_form_fill, resume_form_fill, stop_form_fill handlers...
 
   socket.on('get_active_sessions', () => {
     const sessions = Array.from(activeSessions.entries()).map(([reportId, session]) => ({
@@ -261,55 +243,86 @@ io.on('connection', (socket) => {
       startedAt: session.startedAt,
       paused: session.controlState.paused,
       stopped: session.controlState.stopped,
-      actionType: session.actionType
+      actionType: session.actionType,
+      userId: session.userId
     }));
     socket.emit('active_sessions', sessions);
   });
 
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+  // Enhanced disconnect handler - FIXED VERSION
+  socket.on('disconnect', async (reason) => {
+    console.log(`User ${socket.id} (user: ${socket.userId}) disconnected. Reason: ${reason} at ${new Date().toISOString()}`);
     
-    for (const [reportId, session] of activeSessions.entries()) {
-      if (session.socket.id === socket.id) {
-        console.log(`[CLEANUP] Removing session for reportId=${reportId}`);
-        activeSessions.delete(reportId);
+    const isIntentionalDisconnect = reason === 'io client disconnect' || reason === 'io server disconnect';
+    
+    // Immediate cleanup only for truly intentional disconnects
+    if (isIntentionalDisconnect) {
+      console.log(`[IMMEDIATE CLEANUP] Intentional disconnect for ${socket.id}`);
+      if (socket.userId) {
+        await performCleanupByUserId(socket.userId);
       }
+      return;
     }
+    
+    // For temporary disconnections (transport close, ping timeout), use delayed cleanup
+    if (socket.userId) {
+      console.log(`[DELAYED CLEANUP] User ${socket.userId} disconnected (${reason}). Waiting 25 seconds...`);
+      
+      const timeoutId = setTimeout(async () => {
+        console.log(`[CLEANUP] No reconnection for user ${socket.userId}, performing cleanup`);
+        await performCleanupByUserId(socket.userId);
+      }, 25000); // Increased to 25 seconds
+      
+      userSessions.set(socket.userId, { 
+        cleanupTimeout: timeoutId,
+        disconnectedAt: new Date(),
+        lastSocketId: socket.id 
+      });
+    }
+    // REMOVED anonymous socket cleanup - this was causing your issue
+  });
+
+  // Add connection error handling
+  socket.on('error', (error) => {
+    console.error(`[SOCKET ERROR] Socket ${socket.id} error:`, error);
   });
 });
 
-mongoose.connect(process.env.MONGO_URI)
-  .then(async () => {
+// Enhanced MongoDB connection with better error handling
+async function initializeServer() {
+  try {
+    await mongoose.connect(process.env.MONGO_URI);
     console.log('✅ MongoDB connected');
-
-    // Ensure no legacy unique index on secretKey exists
-    try {
-      const indexes = await Company.collection.indexes();
-      const hasSecretKeyIndex = indexes.some(idx => idx.name === 'secretKey_1');
-      if (hasSecretKeyIndex) {
-        await Company.collection.dropIndex('secretKey_1');
-        console.log('🛠️ Dropped legacy index secretKey_1 from companies collection');
-      }
-    } catch (indexErr) {
-      if (indexErr && indexErr.codeName !== 'IndexNotFound') {
-        console.error('Index cleanup error:', indexErr);
-      }
-    }
-
-    // Sync indexes to schema
-    try {
-      await Company.syncIndexes();
-    } catch (syncErr) {
-      console.error('syncIndexes error:', syncErr);
-    }
-
+    
     server.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`📊 Socket.IO configured with pingInterval: 20s, pingTimeout: 10s`);
     });
-  })
-  .catch((err) => {
+  } catch (err) {
     console.error('❌ MongoDB connection error:', err);
     process.exit(1);
-  });
+  }
+}
 
-module.exports = { io, activeSessions };
+// Graceful shutdown handling
+process.on('SIGTERM', async () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully');
+  
+  // Clean up all user sessions
+  for (const userId of userSessions.keys()) {
+    const userSession = userSessions.get(userId);
+    if (userSession && userSession.cleanupTimeout) {
+      clearTimeout(userSession.cleanupTimeout);
+    }
+    await performCleanupByUserId(userId);
+  }
+  
+  server.close(() => {
+    console.log('✅ HTTP server closed');
+    process.exit(0);
+  });
+});
+
+initializeServer();
+
+module.exports = { io, activeSessions, userSessions };

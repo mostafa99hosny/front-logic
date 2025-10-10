@@ -177,8 +177,10 @@ async def command_handler():
                 }), flush=True)
         
         elif action == "close":
-            if browser:
+            browser = await get_browser()
+            if browser is not None:
                 await closeBrowser()
+                await asyncio.sleep(1)
                 print(json.dumps({"status": "CLOSED"}), flush=True)
 
             break

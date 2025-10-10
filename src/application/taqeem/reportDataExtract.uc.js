@@ -42,6 +42,9 @@ const reportDataExtract = async (excelFilePath, pdfFilePaths = null, userId) => 
         const headerRow = baseSheet.getRow(1);
         const valueRow = baseSheet.getRow(2);
 
+        // Extract the fields that need to be repeated in assets
+        const repeatedFields = {};
+        
         headerRow.eachCell((cell, colNumber) => {
             const key = String(cell.value).trim().toLowerCase();
             const value = getCellValue(valueRow.getCell(colNumber));
@@ -51,12 +54,15 @@ const reportDataExtract = async (excelFilePath, pdfFilePaths = null, userId) => 
                     valuer_name: valueRow.getCell(headerRow.values.indexOf('valuer_name')).value,
                     contribution_percentage: valueRow.getCell(headerRow.values.indexOf('contribution_percentage')).value
                 }];
-
             } else {
                 baseData[key] = value;
+                
+                // Store the fields that need to be repeated in each asset
+                if (key === 'owner_name' || key === 'inspection_date' || key === 'region' || key === 'city') {
+                    repeatedFields[key] = value;
+                }
             }
         });
-
 
         const parseAssetSheet = (sheet, isMarket) => {
             const rows = [];
@@ -81,6 +87,11 @@ const reportDataExtract = async (excelFilePath, pdfFilePaths = null, userId) => 
                     asset.cost_approach  = "1";
                 }
 
+                // Add the repeated fields to each asset
+                Object.keys(repeatedFields).forEach(field => {
+                    asset[field] = repeatedFields[field];
+                });
+
                 rows.push(asset);
             }
             return rows;
@@ -93,8 +104,6 @@ const reportDataExtract = async (excelFilePath, pdfFilePaths = null, userId) => 
         const costAssets = parseAssetSheet(costAssetsSheet, false);
 
         const allAssets = [...marketAssets, ...costAssets];
-
-        
 
         const halfReportDoc = new HalfReport({
             ...baseData,
